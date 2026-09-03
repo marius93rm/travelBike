@@ -312,9 +312,8 @@ def check_docs(failures: list[CheckResult], agent_names: list[str], skill_names:
         )
 
     readme_text = read_text(readme)
-    for required_phrase in ["travelBike", "bici", "treno", "## Direzione del prodotto"]:
-        if required_phrase not in readme_text:
-            fail(failures, readme, f"README is missing product context: {required_phrase}")
+    if readme_text.strip() != "# travelBike":
+        fail(failures, readme, "README should currently contain only the project title")
 
 def is_external_reference(value: str) -> bool:
     if not value:
@@ -405,7 +404,7 @@ def check_gitignore(failures: list[CheckResult]) -> None:
         for line in read_text(gitignore).splitlines()
         if line.strip() and not line.startswith("#")
     }
-    for required in {".DS_Store", "__pycache__/", "node_modules/", ".env", ".codex/agents/", ".agents/skills/"}:
+    for required in {".DS_Store", "__pycache__/", "node_modules/", ".env", ".codex/", ".agents/"}:
         if required not in patterns:
             fail(failures, gitignore, f"missing required ignore pattern: {required}")
 

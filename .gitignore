@@ -15,8 +15,8 @@ Desktop.ini
 *~
 
 # Configurazione locale del kit operativo (non versionare)
-.codex/agents/
-.agents/skills/
+.codex/
+.agents/
 
 # Ambiente locale e segreti
 .env
