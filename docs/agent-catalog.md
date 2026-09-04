@@ -8,7 +8,7 @@ This catalog explains when to use each repo-local Codex subagent and skill. Keep
 2. Use `context_manager` before delegation on unfamiliar repo surfaces.
 3. Use implementation agents only after the affected path is known.
 4. Use review agents after a diff exists, or before a risky design ships.
-5. Use Paseo for advisor, committee, handoff, or loop workflows, not as a replacement for repo-local verification.
+5. Use Paseo natively as the default browser backend; outside browser work, reserve it for advisor, committee, handoff, or loop workflows.
 6. Preserve the default model in `docs/model-routing.md` unless task ambiguity, risk, volume, or verifier quality justifies an override.
 
 ## Codex Agents
@@ -43,7 +43,7 @@ This catalog explains when to use each repo-local Codex subagent and skill. Keep
 | Group | Skills | Purpose |
 | --- | --- | --- |
 | Discovery and planning | `repo-discovery`, `brainstorming`, `planning-contract`, `writing-plans` | Understand the repo, clarify intent, and produce executable plans |
-| Browser integration | `browser-integration` | Bootstrap the in-app browser through the supported direct runtime and recover without speculative fallbacks |
+| Browser integration | `browser-integration` | Route Paseo-first, use explicitly selected Chrome safely, and fall back to the Codex browser when supported |
 | Orchestration | `subagent-driven-development`, `using-git-worktrees` | Use agents and isolated workspaces intentionally |
 | Build discipline | `tdd-workflow`, `systematic-debugging`, `verification-loop`, `branch-finish` | Keep implementation evidence-led and finish cleanly |
 | Review and risk | `code-review`, `security-review`, `dependency-review`, `performance-audit`, `accessibility-audit`, `evidence-qa` | Find defects and prove claims |

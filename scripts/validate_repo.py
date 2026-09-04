@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repo-local integrity checks for unaSquadraFortissimi.
+"""Repo-local integrity checks for BikeTrain România.
 
 The goal is not to prove every sentence in the docs. The goal is to catch
 high-signal drift between the canonical files:
@@ -46,9 +46,13 @@ AGENTS_MD_BUDGET_BYTES = 3_200
 SKILL_CATALOG_BUDGET_CHARS = 6_500
 BROWSER_SKILL_BUDGET_BYTES = 4_000
 BROWSER_SKILL_MARKERS = {
+    'mcp__paseo__browser_list_tabs',
+    'mcp__paseo__browser_snapshot',
     'mcp__node_repl__js',
     'scripts/browser-client.mjs',
+    'agent.browsers.list()',
     'agent.browsers.get("iab")',
+    'type: "extension"',
     'browser.tabs.selected()',
     'browser.tabs.new()',
 }
@@ -312,8 +316,8 @@ def check_docs(failures: list[CheckResult], agent_names: list[str], skill_names:
         )
 
     readme_text = read_text(readme)
-    if readme_text.strip() != "# travelBike":
-        fail(failures, readme, "README should currently contain only the project title")
+    if not readme_text.startswith("# BikeTrain România\n"):
+        fail(failures, readme, "README should start with the current product title")
 
 def is_external_reference(value: str) -> bool:
     if not value:
@@ -419,7 +423,7 @@ def run_checks() -> list[CheckResult]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate unaSquadraFortissimi repo-local agent skeleton.")
+    parser = argparse.ArgumentParser(description="Validate BikeTrain repo-local agent configuration.")
     parser.add_argument("--quiet", action="store_true", help="Only print failures.")
     args = parser.parse_args()
 

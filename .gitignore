@@ -60,6 +60,12 @@ build/
 out/
 storybook-static/
 
+# Stato runtime persistente locale
+data/*.sqlite
+data/*.sqlite-*
+data/*.db
+data/*.db-*
+
 # File temporanei e generati
 .cache/
 tmp/
