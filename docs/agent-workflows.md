@@ -12,7 +12,7 @@ Use one Codex agent for most work:
 4. Verify.
 5. Report changes and residual risk.
 
-Escalate to Paseo only when parallelism or a second perspective reduces risk. Browser work is the exception: `browser-integration` uses native Paseo browser tools by default when available.
+Escalate to Paseo only when parallelism or a second perspective reduces risk.
 
 ## Local Specialist Flow
 

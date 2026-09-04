@@ -46,15 +46,28 @@ AGENTS_MD_BUDGET_BYTES = 3_200
 SKILL_CATALOG_BUDGET_CHARS = 6_500
 BROWSER_SKILL_BUDGET_BYTES = 4_000
 BROWSER_SKILL_MARKERS = {
+    'Do not switch browser lanes automatically',
+    'Default Permissions',
     'mcp__paseo__browser_list_tabs',
     'mcp__paseo__browser_snapshot',
     'mcp__node_repl__js',
     'scripts/browser-client.mjs',
     'agent.browsers.list()',
+    'agent.browsers.get(chromeInfo.id)',
     'agent.browsers.get("iab")',
-    'type: "extension"',
+    'info.type === "extension"',
     'browser.tabs.selected()',
     'browser.tabs.new()',
+}
+BROWSER_RECOVERY_MARKERS = {
+    'No Paseo browser host',
+    'Tools enabled after agent start',
+    'Chrome client absent',
+}
+BROWSER_CROSS_HOST_FALLBACK_PHRASES = {
+    'Do not stop while another supported backend is available',
+    'try the next supported branch',
+    'move to the next supported backend',
 }
 AGENT_UPLINK_MARKERS = {
     'id="uplink"',
@@ -253,6 +266,21 @@ def check_skills(failures: list[CheckResult]) -> list[str]:
             recovery_path = path.parent / "references" / "recovery.md"
             if "references/recovery.md" not in text or not recovery_path.exists():
                 fail(failures, path, "browser recovery reference is missing or not linked")
+            else:
+                recovery_text = read_text(recovery_path)
+                missing_recovery = sorted(
+                    marker for marker in BROWSER_RECOVERY_MARKERS if marker not in recovery_text
+                )
+                if missing_recovery:
+                    fail(
+                        failures,
+                        recovery_path,
+                        f"missing browser recovery markers: {', '.join(missing_recovery)}",
+                    )
+                combined_browser_contract = f"{text}\n{recovery_text}"
+                for phrase in sorted(BROWSER_CROSS_HOST_FALLBACK_PHRASES):
+                    if phrase in combined_browser_contract:
+                        fail(failures, path, f"cross-host fallback claim is forbidden: {phrase}")
 
     return sorted(skill_names)
 

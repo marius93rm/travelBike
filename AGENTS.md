@@ -1,6 +1,6 @@
 # Agent Operating Contract
 
-This repository contains travelBike, an app for finding train journeys that work with a bicycle. Keep changes scoped to the product and its user experience.
+This repository contains travelBike, an app for finding train journeys that work with a bicycle. Keep changes scoped to product UX.
 
 ## Core Rules
 
@@ -21,29 +21,29 @@ This repository contains travelBike, an app for finding train journeys that work
 5. Run verification proportional to the risk.
 6. Summarize changes, evidence, and remaining uncertainty.
 
-Plan first for large, ambiguous, or risky work. Small fixes can proceed after inspection.
+Plan first for large, ambiguous, or risky work; small fixes can proceed after inspection.
 
 ## Context Discipline
 
 - Map with filenames and targeted search before reading file bodies.
 - Read the smallest useful section; do not dump whole catalogs, logs, or generated files when a focused query answers the question.
-- Shape command output with filters and explicit budgets. Preserve a path or command for follow-up instead of embedding noise.
-- Do not reread unchanged material. Keep stable decisions in repo files and retrieve details just in time.
+- Shape command output with filters, line ranges, and budgets. Preserve a path or command for follow-up instead of raw noise.
+- Do not reread unchanged material; keep stable decisions in repo files.
 - Stop exploring once the implementation decision is supported by enough evidence.
-- Keep handoffs and final reports compact: conclusions first, then decisive evidence and gaps.
+- Keep handoffs and final reports compact: conclusions, evidence, gaps.
 
 ## Agents and Skills
 
-Start with the main Codex agent. Use a project-local specialist when specialization or isolation is worth the coordination cost. Give it a bounded goal and require file, command, log, or screenshot evidence.
+Start with the main Codex agent. Use a project-local subagent only when specialization, parallelism, or context isolation justifies its cost. Give it a bounded goal and require a distilled result with file, command, log, or screenshot evidence.
 
 Agent selection lives in `docs/agent-catalog.md`; model defaults and escalation rules live in `docs/model-routing.md`. Preserve the checked-in model and use the lowest reasoning effort that meets the verifier.
 
 Repo-local skills live in `.agents/skills/`. Load a skill when its description matches the task, and read conditional references only when their stated trigger applies. Add a skill only for repeated, stable work with a clear boundary.
 
-Load `browser-integration` before browser work; it routes Paseo-first, explicit Chrome, then the Codex browser. For other orchestration, use Paseo only for an advisor, committee, handoff, or bounded loop; see `docs/agent-workflows.md`.
+Load `browser-integration` before browser-driven work. Select exactly one lane: explicit `@Chrome`/`@Browser`, otherwise Paseo native tools when exposed; never fall back across hosts. Use Paseo otherwise only for an advisor, committee, handoff, or bounded loop; see `docs/agent-workflows.md`.
 
 ## Quality Bar
 
-- Findings must be grounded in files, commands, logs, tests, docs, or clearly marked inference.
+- Ground findings in files, commands, logs, tests, docs, or marked inference.
 - Narrow changes need targeted checks; shared behavior needs broader validation.
 - Documentation should retain decisions and gotchas future agents need, without duplicating discoverable catalogs.
