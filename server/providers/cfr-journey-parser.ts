@@ -3,13 +3,13 @@ import type { TrainOption, TrainSearchCriteria } from '../../src/domain/train.js
 import { scheduledAt } from '../lib/date-time.js'
 
 const OPTION_SELECTOR =
-  '[data-itinerary], .itinerary-result, .itineraryRow, .result-itinerary'
-const EMPTY_SELECTOR = '[data-empty-results="true"], .no-results'
+  '[data-itinerary], .itinerary-result, .itineraryRow, .result-itinerary, li[id^="li-itinerary-"]'
+const EMPTY_SELECTOR = '[data-empty-results="true"], .no-results, .no-itineraries'
 // Only positive machine-readable markers that have been explicitly normalized
 // by this adapter may grant bike access. Human-facing title/alt text is too
 // ambiguous (for example, it can describe a prohibition).
 const BIKE_SELECTOR =
-  '[data-bike-service="true"], [data-service-code="bike"]'
+  '[data-bike-service="true"], [data-service-code="bike"], img[alt="Biciclete"], img[title="Biciclete"]'
 const TRAIN_PATTERN = /\b(IR|R-E|RE|R|IC)\s*([0-9]{2,5})\b/i
 const TIME_PATTERN = /\b([01]\d|2[0-3]):[0-5]\d\b/g
 
@@ -47,21 +47,30 @@ export function parseCfrJourneyHtml(
 
   $(OPTION_SELECTOR).each((index, element) => {
     const row = $(element)
-    const text = row.text().replace(/\s+/g, ' ').trim()
+    const currentCfrRow = row.is('li[id^="li-itinerary-"]')
+    const mainRow = currentCfrRow ? row.find('.div-itineraries-row-main').first() : row
+    const text = mainRow.text().replace(/\s+/g, ' ').trim()
     const bikeServiceIsExplicit =
-      row.is(BIKE_SELECTOR) || row.find(BIKE_SELECTOR).length > 0
+      mainRow.is(BIKE_SELECTOR) || mainRow.find(BIKE_SELECTOR).length > 0
 
     if (!bikeServiceIsExplicit) return
-    if (!row.is('[data-connection-count="0"]')) {
+    if (!currentCfrRow && !row.is('[data-connection-count="0"]')) {
+      return
+    }
+    if (currentCfrRow && !/Tren\s+direct/i.test(text)) {
       return
     }
 
     const category = row.attr('data-train-category')
+      ?? mainRow.find('[class*="span-train-category-"]').first().text().trim()
     const number = row.attr('data-train-number')
+      ?? mainRow.find('a[href*="/Tren/"]').first().text().trim()
     const trainMatch = text.match(TRAIN_PATTERN)
     const trainCategory = category ?? trainMatch?.[1]?.toUpperCase()
     const trainNumber = number ?? trainMatch?.[2]
-    const times = [...text.matchAll(TIME_PATTERN)].map((match) => match[0])
+    const times = currentCfrRow
+      ? mainRow.find('.text-1-4rem').map((_index, time) => $(time).text().trim()).get()
+      : [...text.matchAll(TIME_PATTERN)].map((match) => match[0])
     const departureTime = row.attr('data-departure-time') ?? times[0]
     const arrivalTime = row.attr('data-arrival-time') ?? times.at(-1)
 

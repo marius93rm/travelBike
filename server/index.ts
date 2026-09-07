@@ -12,7 +12,9 @@ import { TrainSearchService } from './services/train-search-service.js'
 import { DestinationDiscoveryService } from './services/destination-discovery-service.js'
 
 const providers: TrainDataProvider[] = []
-const cfrEnabled = process.env.ENABLE_CFR_WEB_ADAPTER === 'true'
+// The adapter is on for the reviewed pilot by default. Deployments can opt out
+// explicitly while legal or operational review is in progress.
+const cfrEnabled = process.env.ENABLE_CFR_WEB_ADAPTER !== 'false'
 const pilot = createPilotStationConfig()
 let cacheStore: SQLiteCacheStore | undefined
 let cfrConfigured = false
@@ -72,7 +74,9 @@ if (cfrEnabled) {
   }
 }
 
-const cfrReady = cfrEnabled && cfrConfigured && pilot.mappingComplete
+const journeyProviderReady = () => cfrEnabled && cfrConfigured && providers.every(
+  (provider) => provider.isReady?.() ?? true,
+)
 
 const app = createApp(
   new TrainSearchService(providers),
@@ -82,9 +86,7 @@ const app = createApp(
     pilot,
     journeySearchAvailable: cfrEnabled && cfrConfigured,
     discoveryAvailable: false,
-    providerReady: () => cfrReady && providers.every(
-      (provider) => provider.isReady?.() ?? true,
-    ),
+    providerReady: journeyProviderReady,
     rateLimit: {
       windowMs: 60_000,
       maxRequests: positiveInteger(process.env.API_REQUESTS_PER_MINUTE, 60),

@@ -106,15 +106,15 @@ La fixture storica contiene esattamente i due record del brief:
 
 Il brief non fornisce un calendario di circolazione. La fixture è disabilitata per default e viene usata soltanto con `demoEnabled` nei test. Non viene proiettata su altre date né inserita nella catena provider di produzione.
 
-## Adapter CFR opzionale
+## Adapter CFR
 
-La pagina pubblica CFR espone il filtro `IsBikesServiceRequired=true`, ma non è un’API pubblica/versionata. L’adapter web è quindi disattivato di default.
+La pagina pubblica CFR espone il filtro `IsBikesServiceRequired=true`, ma non è un’API pubblica/versionata. Per il pilot l’adapter è attivo di default: esegue la normale sequenza della pagina pubblica (pagina di ricerca e successiva richiesta di itinerari), mantenendo dettagli e cookie di sessione soltanto sul server. Il browser riceve solo il DTO normalizzato.
 
 ```bash
-ENABLE_CFR_WEB_ADAPTER=true npm run dev
+ENABLE_CFR_WEB_ADAPTER=false npm run dev
 ```
 
-L’abilitazione da sola non rende il processo ready. L’allowlist incorporata è versionata (`2026-09-04-hubs-v1`), registra județ, provenienza e data di verifica, ma contiene ancora soltanto gli hub revisionati. `PILOT_STATION_IDS` può restringerla, mai estenderla con stazioni del catalogo nazionale. `/api/readiness` resterà quindi degradato finché l’elenco completo dei quattro județe non sarà verificato e marcato completo nel codice.
+L’attivazione del provider permette le ricerche soltanto fra le stazioni revisionate; non rende automaticamente il processo ready. L’allowlist incorporata è versionata (`2026-09-04-hubs-v1`), registra județ, provenienza e data di verifica, ma contiene ancora soltanto gli hub revisionati. `PILOT_STATION_IDS` può restringerla, mai estenderla con stazioni del catalogo nazionale. `/api/readiness` resterà quindi degradato finché l’elenco completo dei quattro județe non sarà verificato e marcato completo nel codice.
 
 Configurazione operativa:
 
@@ -135,8 +135,7 @@ La cache SQLite conserva soltanto risposte autorevoli correnti, inclusi i vuoti 
 Prima di abilitarlo in produzione bisogna:
 
 1. verificare condizioni legali e tecniche;
-2. sostituire/affiancare la fixture contrattuale con HTML reale, sanificato e aggiornato;
-3. validare i selettori del parser;
+2. validare periodicamente la sequenza pagina di ricerca + richiesta itinerari e i selettori del parser;
 4. completare e revisionare `PILOT_STATION_IDS` per tutte le stazioni dei quattro județe;
 5. eseguire smoke e load test sullo stesso sistema operativo/architettura del deployment.
 

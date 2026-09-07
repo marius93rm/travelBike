@@ -32,6 +32,32 @@ describe('parseCfrJourneyHtml', () => {
     })
   })
 
+  it('normalizes the current CFR itinerary result markup', () => {
+    const options = parseCfrJourneyHtml(
+      `<ul class="list-group">
+        <li class="list-group-item" id="li-itinerary-0">
+          <div class="div-itinerary-station">
+            <div class="row div-itineraries-row-main">
+              <div><span class="text-1-4rem">19:17</span></div>
+              <div><span class="span-train-category-ir">IR</span><a href="/ro-RO/Tren/1622?Date=05.09.2026">1622</a><div class="badge"><span>Tren direct</span></div><img alt="Biciclete" src="/images/Icons/TrainServices/3.svg" /></div>
+              <div><span class="text-1-4rem">19:40</span></div>
+            </div>
+          </div>
+        </li>
+      </ul>`,
+      { from: 'codlea', to: 'brasov', date: '2026-09-05', bike: true },
+      'https://bilete.cfrcalatori.ro/ro-RO/Itineraries',
+      '2026-09-05T18:00:00+03:00',
+    )
+
+    expect(options).toHaveLength(1)
+    expect(options[0]).toMatchObject({
+      trainCategory: 'IR', trainNumber: '1622', durationMinutes: 23,
+      departureAt: expect.stringContaining('19:17'),
+      arrivalAt: expect.stringContaining('19:40'), bikeAllowed: true,
+    })
+  })
+
   it('fails closed when the upstream markup is no longer recognized', () => {
     expect(() =>
       parseCfrJourneyHtml(

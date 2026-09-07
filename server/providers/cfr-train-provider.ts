@@ -1,4 +1,5 @@
 import type { TrainSearchCriteria } from '../../src/domain/train.js'
+import { load } from 'cheerio'
 import { stationsById } from '../../src/domain/stations.js'
 import { parseCfrJourneyHtml } from './cfr-journey-parser.js'
 import type {
@@ -8,6 +9,13 @@ import type {
 
 const DEFAULT_ENDPOINT = 'https://bilete.cfrcalatori.ro/ro-RO/Itineraries'
 const DEFAULT_PUBLIC_SOURCE_URL = 'https://bilete.cfrcalatori.ro/ro-RO/Itineraries'
+
+// The current CFR planner uses these public search labels, which differ from
+// the historical operational labels retained in the timetable catalog.
+const CURRENT_CFR_STATION_NAMES: Readonly<Record<string, string>> = {
+  brasov: 'Brașov',
+  codlea: 'Codlea',
+}
 
 export interface CfrTrainProviderOptions {
   /** Explicit allowlist for the upstream host; defaults to the official CFR host. */
@@ -35,16 +43,16 @@ export class CfrTrainProvider implements TrainDataProvider {
 
   async search(criteria: TrainSearchCriteria): Promise<ProviderSearchResult> {
     const fetchedAt = new Date().toISOString()
-    let sourceUrl: string
+    let searchPageUrl: string
     try {
-      sourceUrl = this.buildUrl(criteria)
+      searchPageUrl = this.buildSearchPageUrl(criteria)
     } catch (error) {
       return this.failure('unavailable', fetchedAt, error)
     }
 
-    let response: Response
+    let searchPage: Response
     try {
-      response = await this.fetcher(sourceUrl, {
+      searchPage = await this.fetcher(searchPageUrl, {
         headers: {
           Accept: 'text/html,application/xhtml+xml',
           'User-Agent': 'BikeTrain-Romania/0.1 (+local MVP; cached requests)',
@@ -55,37 +63,68 @@ export class CfrTrainProvider implements TrainDataProvider {
       return this.failure('unavailable', fetchedAt, error)
     }
 
-    if (response.status === 429) {
+    if (searchPage.status === 429) {
       return {
         ...this.failure('rate_limited', fetchedAt, 'CFR limitează temporar cererile.'),
-        retryAfterSeconds: retryAfterSeconds(response.headers.get('retry-after')),
+        retryAfterSeconds: retryAfterSeconds(searchPage.headers.get('retry-after')),
       }
     }
-    if (!response.ok) {
-      return this.failure('unavailable', fetchedAt, `CFR journey source returned ${response.status}`)
+    if (!searchPage.ok) {
+      return this.failure('unavailable', fetchedAt, `CFR journey source returned ${searchPage.status}`)
     }
 
-    const contentType = response.headers.get('content-type') ?? ''
-    if (!/^text\/html(?:;|$)/i.test(contentType)) {
-      return this.failure('invalid_payload', fetchedAt, 'CFR returned a non-HTML response.')
+    let searchPageHtml: string
+    try {
+      searchPageHtml = await this.readHtml(searchPage)
+    } catch (error) {
+      return this.failure('invalid_payload', fetchedAt, error)
     }
-    const contentLength = Number(response.headers.get('content-length'))
-    const maxBodyBytes = this.options.maxBodyBytes ?? 750_000
-    if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
-      return this.failure('invalid_payload', fetchedAt, 'CFR response exceeds the configured size limit.')
+
+    let form: URLSearchParams
+    try {
+      form = this.searchForm(searchPageHtml, criteria)
+    } catch (error) {
+      return this.failure('invalid_payload', fetchedAt, error)
+    }
+
+    let resultPage: Response
+    try {
+      resultPage = await this.fetcher(this.resultUrl(), {
+        method: 'POST',
+        headers: {
+          Accept: 'text/html, */*; q=0.01',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'User-Agent': 'BikeTrain-Romania/0.1 (+local MVP; cached requests)',
+          ...(this.sessionCookie(searchPage) ? { Cookie: this.sessionCookie(searchPage)! } : {}),
+        },
+        body: form.toString(),
+        signal: AbortSignal.timeout(12_000),
+      })
+    } catch (error) {
+      return this.failure('unavailable', fetchedAt, error)
+    }
+
+    if (resultPage.status === 429) {
+      return {
+        ...this.failure('rate_limited', fetchedAt, 'CFR limitează temporar cererile.'),
+        retryAfterSeconds: retryAfterSeconds(resultPage.headers.get('retry-after')),
+      }
+    }
+    if (!resultPage.ok) {
+      return this.failure('unavailable', fetchedAt, `CFR journey source returned ${resultPage.status}`)
     }
 
     let html: string
     try {
-      html = await response.text()
+      html = await this.readHtml(resultPage)
     } catch (error) {
-      return this.failure('unavailable', fetchedAt, error)
+      return this.failure('invalid_payload', fetchedAt, error)
     }
-    if (new TextEncoder().encode(html).byteLength > maxBodyBytes) {
-      return this.failure('invalid_payload', fetchedAt, 'CFR response exceeds the configured size limit.')
-    }
-    if (/captcha|access denied|too many requests/i.test(html)) {
+    if (/recaptchafailed|captcha|access denied|too many requests/i.test(html)) {
       return this.failure('unavailable', fetchedAt, 'CFR journey source requires interactive access.')
+    }
+    if (/servicetemporarilyunavailable/i.test(html)) {
+      return this.failure('unavailable', fetchedAt, 'CFR journey source is temporarily unavailable.')
     }
 
     try {
@@ -100,19 +139,90 @@ export class CfrTrainProvider implements TrainDataProvider {
     }
   }
 
-  private buildUrl(criteria: TrainSearchCriteria): string {
+  private buildSearchPageUrl(criteria: TrainSearchCriteria): string {
     const url = new URL(this.endpoint)
-    const date = criteria.date.split('-').reverse().join('.')
-    url.searchParams.set('DepartureStationName', this.stationName(criteria.from))
-    url.searchParams.set('ArrivalStationName', this.stationName(criteria.to))
-    url.searchParams.set('DepartureDate', `${date} 00:00:00`)
+    url.pathname = `/ro-RO/Rute-trenuri/${this.stationName(criteria.from)}/${this.stationName(criteria.to)}`
+    url.search = ''
+    url.searchParams.set('DepartureDate', `${this.officialDate(criteria.date)} 00:00:00`)
     url.searchParams.set('IsBikesServiceRequired', 'true')
     url.searchParams.set('ConnectionsTypeId', '1')
     url.searchParams.set('BetweenTrainsMinimumMinutes', '15')
     return url.toString()
   }
 
+  private resultUrl() {
+    const url = new URL(this.endpoint)
+    url.pathname = '/ro-RO/Itineraries/GetItineraries'
+    url.search = ''
+    return url.toString()
+  }
+
+  private searchForm(html: string, criteria: TrainSearchCriteria) {
+    const $ = load(html)
+    const form = $('#form-search')
+    const requestToken = form.find('input[name="__RequestVerificationToken"]').attr('value')
+    const confirmationKey = form.find('input[name="ConfirmationKey"]').attr('value')
+    if (!form.length || !requestToken || !confirmationKey) {
+      throw new Error('CFR search form is not recognized')
+    }
+
+    const fields = new URLSearchParams()
+    form.find('input[name]').each((_index, element) => {
+      const input = $(element)
+      const name = input.attr('name')
+      if (name) fields.set(name, input.attr('value') ?? '')
+    })
+
+    fields.set('DepartureStationName', this.stationName(criteria.from))
+    fields.set('ArrivalStationName', this.stationName(criteria.to))
+    fields.set('DepartureDate', `${this.officialDate(criteria.date)} 00:00:00`)
+    fields.set('ConnectionsTypeId', '1')
+    fields.set('MinutesInDay', '0')
+    fields.set('OrderingTypeId', '0')
+    fields.set('TimeSelectionId', '0')
+    fields.set('IsBikesServiceRequired', 'true')
+    fields.set('IsOnlineBuyingRequired', 'False')
+    fields.set('IsBarRestaurantServiceRequired', 'False')
+    fields.set('IsSleeperCouchetteServiceRequired', 'False')
+    fields.set('BetweenTrainsMinimumMinutes', '15')
+    fields.set('IsSearchWanted', 'False')
+    fields.set('IsReCaptchaFailed', 'False')
+    fields.set('__RequestVerificationToken', requestToken)
+    fields.set('ConfirmationKey', confirmationKey)
+    return fields
+  }
+
+  private officialDate(isoDate: string) {
+    return isoDate.split('-').reverse().join('.')
+  }
+
+  private async readHtml(response: Response) {
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!/^text\/html(?:;|$)/i.test(contentType)) {
+      throw new Error('CFR returned a non-HTML response.')
+    }
+    const contentLength = Number(response.headers.get('content-length'))
+    const maxBodyBytes = this.options.maxBodyBytes ?? 750_000
+    if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
+      throw new Error('CFR response exceeds the configured size limit.')
+    }
+    const html = await response.text()
+    if (new TextEncoder().encode(html).byteLength > maxBodyBytes) {
+      throw new Error('CFR response exceeds the configured size limit.')
+    }
+    return html
+  }
+
+  private sessionCookie(response: Response) {
+    const headers = response.headers as Headers & { getSetCookie?: () => string[] }
+    const rawCookies = headers.getSetCookie?.() ?? (headers.get('set-cookie') ? [headers.get('set-cookie')!] : [])
+    const cookies = rawCookies.map((cookie) => cookie.split(';', 1)[0]).filter(Boolean)
+    return cookies.length ? cookies.join('; ') : undefined
+  }
+
   private stationName(id: string): string {
+    const currentPlannerName = CURRENT_CFR_STATION_NAMES[id]
+    if (currentPlannerName) return currentPlannerName
     const station = stationsById.get(id)
     return station?.providerNames?.cfr ?? station?.providerName ?? station?.name ?? id
   }
