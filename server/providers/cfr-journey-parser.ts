@@ -5,6 +5,7 @@ import { scheduledAt } from '../lib/date-time.js'
 const OPTION_SELECTOR =
   '[data-itinerary], .itinerary-result, .itineraryRow, .result-itinerary, li[id^="li-itinerary-"]'
 const EMPTY_SELECTOR = '[data-empty-results="true"], .no-results, .no-itineraries'
+const CFR_NO_ROUTE_PATTERN = /nu am găsit nicio rută pentru căutarea ta/i
 // Only positive machine-readable markers that have been explicitly normalized
 // by this adapter may grant bike access. Human-facing title/alt text is too
 // ambiguous (for example, it can describe a prohibition).
@@ -39,7 +40,8 @@ export function parseCfrJourneyHtml(
   const $ = load(html)
   const options: TrainOption[] = []
   const recognizedRows = $(OPTION_SELECTOR).length
-  const recognizedEmptyState = $(EMPTY_SELECTOR).length > 0
+  const recognizedEmptyState = $(EMPTY_SELECTOR).length > 0 ||
+    $('.alert-warning').toArray().some((element) => CFR_NO_ROUTE_PATTERN.test($(element).text()))
 
   if (recognizedRows === 0 && !recognizedEmptyState) {
     throw new Error('CFR journey markup is not recognized')

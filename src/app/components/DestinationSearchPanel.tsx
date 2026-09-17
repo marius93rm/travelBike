@@ -4,6 +4,7 @@ import type {
   DestinationSearchCriteria,
   StationId,
 } from '../../domain/train.js'
+import { journeyDateBounds } from '../../domain/journey-date.js'
 import { ro } from '../../i18n/ro.js'
 import { StationCombobox } from './StationCombobox.js'
 
@@ -15,12 +16,6 @@ interface DestinationSearchPanelProps {
   onSearch: () => void
 }
 
-function addDays(date: string, days: number) {
-  const value = new Date(`${date}T12:00:00Z`)
-  value.setUTCDate(value.getUTCDate() + days)
-  return value.toISOString().slice(0, 10)
-}
-
 export function DestinationSearchPanel({
   criteria,
   loading,
@@ -28,14 +23,11 @@ export function DestinationSearchPanel({
   onChange,
   onSearch,
 }: DestinationSearchPanelProps) {
+  const dateBounds = journeyDateBounds()
   const [stationValid, setStationValid] = useState(true)
   const [submitted, setSubmitted] = useState(false)
   const stationRef = useRef<HTMLInputElement>(null)
   const setValidity = useCallback((valid: boolean) => setStationValid(valid), [])
-  const today = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Bucharest',
-  }).format(new Date())
-
   useEffect(() => {
     if (submitted && !stationValid) stationRef.current?.focus()
   }, [submitted, stationValid])
@@ -89,8 +81,8 @@ export function DestinationSearchPanel({
               id="discover-date"
               type="date"
               value={criteria.date}
-              min={today}
-              max={addDays(today, 120)}
+              min={dateBounds.min}
+              max={dateBounds.max}
               onChange={(event) => onChange({ ...criteria, date: event.target.value })}
               required
             />

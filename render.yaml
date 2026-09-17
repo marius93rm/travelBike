@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: biketrain-romania
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENABLE_CFR_WEB_ADAPTER
+        value: "true"
+      - key: CFR_JOURNEY_ENDPOINT
+        value: https://bilete.cfrcalatori.ro/ro-RO/Itineraries
+      - key: CFR_ALLOWED_HOSTS
+        value: bilete.cfrcalatori.ro
+      - key: CFR_PUBLIC_SOURCE_URL
+        value: https://bilete.cfrcalatori.ro/ro-RO/Itineraries
+      - key: CACHE_DB_PATH
+        value: /tmp/biketrain/train-cache.sqlite

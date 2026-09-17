@@ -1,6 +1,7 @@
 import { ArrowDownUp, Bike, CalendarDays, Search } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import type { StationId, TrainSearchCriteria } from '../../domain/train.js'
+import { journeyDateBounds } from '../../domain/journey-date.js'
 import { ro } from '../../i18n/ro.js'
 import { StationCombobox } from './StationCombobox.js'
 
@@ -12,12 +13,6 @@ interface SearchPanelProps {
   onSwap: () => void
 }
 
-function addDays(date: string, days: number) {
-  const value = new Date(`${date}T12:00:00Z`)
-  value.setUTCDate(value.getUTCDate() + days)
-  return value.toISOString().slice(0, 10)
-}
-
 export function SearchPanel({
   criteria,
   loading,
@@ -25,6 +20,7 @@ export function SearchPanel({
   onSearch,
   onSwap,
 }: SearchPanelProps) {
+  const dateBounds = journeyDateBounds()
   const [stationValidity, setStationValidity] = useState({ from: true, to: true })
   const [submitted, setSubmitted] = useState(false)
   const fromStationRef = useRef<HTMLInputElement>(null)
@@ -120,8 +116,8 @@ export function SearchPanel({
               id="journey-date"
               type="date"
               value={criteria.date}
-              min={new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Bucharest' }).format(new Date())}
-              max={addDays(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Bucharest' }).format(new Date()), 120)}
+              min={dateBounds.min}
+              max={dateBounds.max}
               onChange={(event) => onChange({ ...criteria, date: event.target.value })}
               required
             />

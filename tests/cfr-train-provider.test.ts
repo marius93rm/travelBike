@@ -43,8 +43,32 @@ describe('CfrTrainProvider station mapping', () => {
 
     const body = new URLSearchParams(fetcher.mock.calls[1]?.[1]?.body as string)
     expect(requestedUrl).toContain('/ro-RO/Itineraries/GetItineraries')
-    expect(body.get('DepartureStationName')).toBe('Timişoara Nord')
+    expect(body.get('DepartureStationName')).toBe('Timișoara Nord')
     expect(body.get('ArrivalStationName')).toBe('Codlea')
+  })
+
+  it('uses current commercial labels for pilot stations', async () => {
+    let requestedUrl = ''
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      void init
+      requestedUrl = input.toString()
+      return fetcher.mock.calls.length === 1
+        ? htmlResponse(searchPageHtml)
+        : htmlResponse('<div data-empty-results="true"></div>')
+    })
+    const provider = new CfrTrainProvider('https://example.com/itineraries', fetcher as typeof fetch, { allowedHosts: ['example.com'] })
+
+    await provider.search({
+      from: 'cfr-20658',
+      to: 'cfr-20775',
+      date: '2026-09-03',
+      bike: true,
+    })
+
+    const body = new URLSearchParams(fetcher.mock.calls[1]?.[1]?.body as string)
+    expect(requestedUrl).toContain('/ro-RO/Itineraries/GetItineraries')
+    expect(body.get('DepartureStationName')).toBe('Sibiu')
+    expect(body.get('ArrivalStationName')).toBe('Cristian Sibiu')
   })
 
   it('classifies Retry-After responses without parsing their body', async () => {

@@ -105,6 +105,21 @@ describe('parseCfrJourneyHtml', () => {
     ).toEqual([])
   })
 
+  it('recognizes the official CFR no-route warning as an authoritative empty state', () => {
+    expect(
+      parseCfrJourneyHtml(
+        '<div class="alert alert-warning">Nu am găsit nicio rută pentru căutarea ta.</div>',
+        {
+          from: 'cfr-40139',
+          to: 'cfr-40220',
+          date: '2026-09-03',
+          bike: true,
+        },
+        'https://bilete.cfrcalatori.ro/ro-RO/Itineraries',
+      ),
+    ).toEqual([])
+  })
+
   it('does not confuse maintenance copy with a structured empty state', () => {
     expect(() =>
       parseCfrJourneyHtml(

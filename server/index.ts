@@ -12,9 +12,9 @@ import { TrainSearchService } from './services/train-search-service.js'
 import { DestinationDiscoveryService } from './services/destination-discovery-service.js'
 
 const providers: TrainDataProvider[] = []
-// The adapter is on for the reviewed pilot by default. Deployments can opt out
-// explicitly while legal or operational review is in progress.
-const cfrEnabled = process.env.ENABLE_CFR_WEB_ADAPTER !== 'false'
+// The CFR page is not a versioned API. Enable the adapter only in an approved
+// deployment with an explicit true value; all other environments fail closed.
+const cfrEnabled = process.env.ENABLE_CFR_WEB_ADAPTER === 'true'
 const pilot = createPilotStationConfig()
 let cacheStore: SQLiteCacheStore | undefined
 let cfrConfigured = false
@@ -31,8 +31,8 @@ function optionalNonNegativeInteger(value: string | undefined): number | undefin
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined
 }
 
-// The CFR page is a public UI, not a documented API. The adapter is opt-in so
-// deployments can enable it only after reviewing permission and real fixtures.
+// The CFR page is a public UI, not a documented API. Keep acquisition disabled
+// unless the deployment explicitly opts into the reviewed adapter.
 if (cfrEnabled) {
   try {
     const allowedHosts = process.env.CFR_ALLOWED_HOSTS
@@ -105,8 +105,8 @@ if (existsSync(path.join(distDirectory, 'index.html'))) {
   })
 }
 
-const server = app.listen(port, () => {
-  console.log(`BikeTrain API listening on http://localhost:${port}`)
+const server = app.listen(port, '0.0.0.0', () => {
+  console.log(`BikeTrain API listening on port ${port}`)
 })
 
 function shutdown() {

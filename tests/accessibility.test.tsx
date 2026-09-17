@@ -1,12 +1,15 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { journeyDateBounds } from '../src/domain/journey-date.js'
 import { DestinationSearchPanel } from '../src/app/components/DestinationSearchPanel.js'
 import { SearchModeTabs } from '../src/app/components/SearchModeTabs.js'
 import { SearchPanel } from '../src/app/components/SearchPanel.js'
 import { StationCombobox } from '../src/app/components/StationCombobox.js'
 
 describe('search accessibility', () => {
+  const validJourneyDate = journeyDateBounds().min
+
   it('keeps combobox status outside its listbox and only controls an open listbox', async () => {
     const user = userEvent.setup()
     render(
@@ -61,7 +64,7 @@ describe('search accessibility', () => {
     const user = userEvent.setup()
     render(
       <SearchPanel
-        criteria={{ from: 'codlea', to: 'brasov', date: '2026-09-05', bike: true }}
+        criteria={{ from: 'codlea', to: 'brasov', date: validJourneyDate, bike: true }}
         loading={false}
         onChange={vi.fn()}
         onSearch={vi.fn()}
@@ -82,7 +85,7 @@ describe('search accessibility', () => {
     const user = userEvent.setup()
     render(
       <DestinationSearchPanel
-        criteria={{ from: 'brasov', date: '2026-09-05', bike: true, direct: true }}
+        criteria={{ from: 'brasov', date: validJourneyDate, bike: true, direct: true }}
         loading={false}
         onChange={vi.fn()}
         onSearch={vi.fn()}

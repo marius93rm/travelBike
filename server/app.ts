@@ -1,5 +1,6 @@
 import express from 'express'
 import { z } from 'zod'
+import { journeyDateBounds } from '../src/domain/journey-date.js'
 import { stations } from '../src/domain/stations.js'
 import type {
   DestinationSearchCriteria,
@@ -23,18 +24,13 @@ const stationIds = new Set(stations.map((station) => station.id))
 type Clock = () => Date
 
 function queryFields(clock: Clock) {
-  const today = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Bucharest',
-  }).format(clock())
-  const latestJourneyDate = new Date(`${today}T12:00:00Z`)
-  latestJourneyDate.setUTCDate(latestJourneyDate.getUTCDate() + 120)
-  const latestJourneyDateIso = latestJourneyDate.toISOString().slice(0, 10)
+  const { min, max } = journeyDateBounds(clock())
 
   return {
     from: z.string().refine((id) => stationIds.has(id), 'Stație necunoscută'),
     date: z.iso.date().refine(
-      (date) => date >= today && date <= latestJourneyDateIso,
-      'Data trebuie să fie în următoarele 120 de zile',
+      (date) => date >= min && date <= max,
+      'Data trebuie să fie în următoarele 120 de zile și în perioada orarului publicat',
     ),
     bike: z.literal('true'),
   }

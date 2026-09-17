@@ -1,6 +1,7 @@
 import { AlertTriangle, Bike, CheckCircle2, Compass, Info, RefreshCw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { fetchCoverage, fetchDestinations, fetchTrains } from '../data/train-api.js'
+import { journeyDateBounds } from '../domain/journey-date.js'
 import type {
   DestinationSearchCriteria,
   DestinationSearchResponse,
@@ -17,22 +18,16 @@ import { SearchModeTabs, type SearchMode } from './components/SearchModeTabs.js'
 import { SearchPanel } from './components/SearchPanel.js'
 import { TrainCard } from './components/TrainCard.js'
 
-function todayInRomania() {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Bucharest',
-  }).format(new Date())
-}
-
 const initialCriteria: TrainSearchCriteria = {
   from: 'codlea',
   to: 'brasov',
-  date: todayInRomania(),
+  date: journeyDateBounds().min,
   bike: true,
 }
 
 const initialDestinationCriteria: DestinationSearchCriteria = {
   from: 'brasov',
-  date: todayInRomania(),
+  date: journeyDateBounds().min,
   bike: true,
   direct: true,
 }

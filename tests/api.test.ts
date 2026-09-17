@@ -84,6 +84,17 @@ describe('GET /api/trains', () => {
 
     expect(response.status).toBe(400)
   })
+
+  it('rejects dates after the published timetable validity', async () => {
+    const response = await request(app).get('/api/trains').query({
+      from: 'codlea',
+      to: 'brasov',
+      date: '2026-12-13',
+      bike: 'true',
+    })
+
+    expect(response.status).toBe(400)
+  })
 })
 
 describe('GET /api/destinations', () => {
@@ -227,8 +238,8 @@ describe('operational API endpoints', () => {
     const pilot = createPilotStationConfig('cfr-11906')
     expect(pilot.stationIds.has('cfr-11906')).toBe(false)
     expect(pilot.mappingComplete).toBe(false)
-    expect(pilot.allowlistVersion).toBe('2026-09-04-hubs-v1')
-    expect(pilot.verifiedAt).toBe('2026-09-04')
+    expect(pilot.allowlistVersion).toBe('2026-09-16-counties-v1')
+    expect(pilot.verifiedAt).toBe('2026-09-16')
   })
 
   it('reflects runtime provider readiness without probing upstream', async () => {
