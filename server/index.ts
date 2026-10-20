@@ -4,17 +4,26 @@ import express from 'express'
 import { createApp } from './app.js'
 import { SQLiteCacheStore } from './cache/sqlite-cache-store.js'
 import { createPilotStationConfig } from './config/pilot.js'
+import { cfrWebAdapterEnabled, hasCfrWrittenAuthorizationReference } from './config/cfr-authorization.js'
 import { CachedTrainProvider } from './providers/cached-train-provider.js'
-import { CfrTrainProvider } from './providers/cfr-train-provider.js'
+import { CFR_PUBLIC_PROVIDER_LINK, CfrTrainProvider } from './providers/cfr-train-provider.js'
 import { ControlledTrainProvider } from './providers/controlled-train-provider.js'
 import type { TrainDataProvider } from './providers/train-data-provider.js'
 import { TrainSearchService } from './services/train-search-service.js'
 import { DestinationDiscoveryService } from './services/destination-discovery-service.js'
 
 const providers: TrainDataProvider[] = []
-// The CFR page is not a versioned API. Enable the adapter only in an approved
-// deployment with an explicit true value; all other environments fail closed.
-const cfrEnabled = process.env.ENABLE_CFR_WEB_ADAPTER === 'true'
+// The CFR page is not a versioned API. Both an explicit enable and a reference
+// to written authorization are required; all other environments fail closed.
+const cfrEnabled = cfrWebAdapterEnabled(process.env)
+if (process.env.ENABLE_CFR_WEB_ADAPTER === 'true'
+  && !hasCfrWrittenAuthorizationReference(process.env)) {
+  console.error(JSON.stringify({
+    event: 'provider_configuration',
+    providerId: 'cfr',
+    outcome: 'written_authorization_reference_required',
+  }))
+}
 const pilot = createPilotStationConfig()
 let cacheStore: SQLiteCacheStore | undefined
 let cfrConfigured = false
@@ -26,7 +35,7 @@ function positiveInteger(value: string | undefined, fallback: number): number {
 }
 
 function optionalNonNegativeInteger(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined
+  if (value === undefined || value.trim() === '') return undefined
   const parsed = Number(value)
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined
 }
@@ -58,7 +67,7 @@ if (cfrEnabled) {
           cfrProvider,
           {
             maxConcurrent: positiveInteger(process.env.CFR_MAX_CONCURRENT, 2),
-            maxQueue: positiveInteger(process.env.CFR_MAX_QUEUE, 20),
+            maxQueue: optionalNonNegativeInteger(process.env.CFR_MAX_QUEUE) ?? 20,
             maxRequests: positiveInteger(process.env.CFR_REQUESTS_PER_MINUTE, 30),
             onEvent: (event) => console.info(JSON.stringify(event)),
           },
@@ -86,10 +95,12 @@ const app = createApp(
     pilot,
     journeySearchAvailable: cfrEnabled && cfrConfigured,
     discoveryAvailable: false,
+    providerLinks: [CFR_PUBLIC_PROVIDER_LINK],
     providerReady: journeyProviderReady,
     rateLimit: {
       windowMs: 60_000,
       maxRequests: positiveInteger(process.env.API_REQUESTS_PER_MINUTE, 60),
+      clientIpHeader: process.env.API_RATE_LIMIT_CLIENT_IP_HEADER,
     },
     trustProxy: optionalNonNegativeInteger(process.env.TRUST_PROXY_HOPS),
   },

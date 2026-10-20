@@ -1,5 +1,6 @@
 import type { TrainSearchCriteria } from '../../src/domain/train.js'
 import { MemoryCacheStore, type CacheStore } from '../cache/cache-store.js'
+import { PROVIDER_CACHE_STALE_WARNING } from '../lib/provider-warnings.js'
 import type { ProviderSearchResult, TrainDataProvider } from './train-data-provider.js'
 
 const MAX_CURRENT_TTL_MS = 60 * 60 * 1000
@@ -15,6 +16,7 @@ export interface CachedTrainProviderOptions {
 export class CachedTrainProvider implements TrainDataProvider {
   readonly id: string
   readonly capabilities: TrainDataProvider['capabilities']
+  readonly sourceInfo: TrainDataProvider['sourceInfo']
   readonly isReady?: TrainDataProvider['isReady']
   readonly discoverDirectDestinations?: TrainDataProvider['discoverDirectDestinations']
   private readonly store: CacheStore
@@ -36,6 +38,7 @@ export class CachedTrainProvider implements TrainDataProvider {
       : optionsOrTtl
     this.id = `cached:${provider.id}`
     this.capabilities = provider.capabilities
+    this.sourceInfo = provider.sourceInfo
     if (provider.isReady) this.isReady = provider.isReady.bind(provider)
     this.store = options.store ?? new MemoryCacheStore()
     this.ttlMs = Math.min(Math.max(1, options.ttlMs ?? MAX_CURRENT_TTL_MS), MAX_CURRENT_TTL_MS)
@@ -48,7 +51,7 @@ export class CachedTrainProvider implements TrainDataProvider {
   async search(criteria: TrainSearchCriteria): Promise<ProviderSearchResult> {
     const key = this.cacheKey(criteria)
     const cached = this.store.get<ProviderSearchResult>(key, this.clock())
-    if (cached) return cached.value
+    if (cached) return { ...cached.value, cached: true }
 
     const existingRequest = this.inFlight.get(key)
     if (existingRequest) return existingRequest
@@ -77,7 +80,7 @@ export class CachedTrainProvider implements TrainDataProvider {
         options: [],
         outcome: 'unavailable',
         stale: true,
-        warning: 'Datele providerului sunt mai vechi de o oră sau au un marcaj temporal invalid.',
+        warning: PROVIDER_CACHE_STALE_WARNING,
       }
     }
     // Empty success is authoritative; failures must be retried rather than cached.

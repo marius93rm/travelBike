@@ -6,18 +6,42 @@ import type {
   TrainSearchResponse,
   TrainSearchSource,
 } from '../../src/domain/train.js'
+import {
+  cacheStatusForSources,
+  hasConfirmedNonFoldableBikeService,
+  reliabilityForProviderId,
+} from '../../src/domain/train.js'
+import { dateInRomania } from '../../src/domain/journey-date.js'
+import { latestIsoTimestamp } from '../lib/date-time.js'
+import {
+  PROVIDER_FAILURE_WARNING,
+  PROVIDER_FRESHNESS_WARNING,
+  PROVIDER_INVALID_RESULT_WARNING,
+  safeProviderWarning,
+} from '../lib/provider-warnings.js'
 import type { TrainDataProvider } from '../providers/train-data-provider.js'
 
-const FALLBACK_WARNING =
-  'Sursa live nu este disponibilă. Afișăm ultima informație verificată disponibilă.'
 const MAX_CURRENT_AGE_MS = 60 * 60 * 1000
+
+function matchesSearchCriteria(train: TrainOption, criteria: TrainSearchCriteria) {
+  const departureAt = new Date(train.departureAt)
+  const arrivalAt = new Date(train.arrivalAt)
+  return Number.isFinite(departureAt.getTime())
+    && Number.isFinite(arrivalAt.getTime())
+    && arrivalAt.getTime() > departureAt.getTime()
+    && train.departureStationId === criteria.from
+    && train.arrivalStationId === criteria.to
+    && dateInRomania(departureAt) === criteria.date
+}
 
 function responseReliability(
   providerId: string,
   options: TrainSearchResponse['options'],
-): Reliability {
+  hasSuccess: boolean,
+): Reliability | null {
   if (options.length > 0) return options[0].reliability
-  return providerId === 'fallback' ? 'fallback' : 'official'
+  if (!hasSuccess) return null
+  return reliabilityForProviderId(providerId)
 }
 
 export class TrainSearchService {
@@ -41,26 +65,36 @@ export class TrainSearchService {
           || ageMs > MAX_CURRENT_AGE_MS
           || ageMs < -5 * 60 * 1000
         )
+        const hasMismatchedBikeResult = reportedOutcome === 'success' && result.options.some(
+          (train) => hasConfirmedNonFoldableBikeService(train)
+            && !matchesSearchCriteria(train, criteria),
+        )
         const outcome = result.stale === true || outsideFreshnessWindow
           ? 'unavailable'
-          : reportedOutcome
+          : hasMismatchedBikeResult ? 'invalid_payload' : reportedOutcome
+        const sourceInfo = result.sourceInfo ?? provider.sourceInfo
         sources.push({
           providerId: result.providerId,
+          ...(outcome === 'success' && result.cached === true ? { cached: true } : {}),
+          ...(sourceInfo ? { sourceInfo } : {}),
           outcome,
           fetchedAt: outcome === 'success' ? result.fetchedAt : null,
           warning: outsideFreshnessWindow
-            ? 'Datele providerului nu se încadrează în fereastra de actualitate de o oră.'
-            : result.warning ?? null,
+            ? PROVIDER_FRESHNESS_WARNING
+            : hasMismatchedBikeResult
+              ? PROVIDER_INVALID_RESULT_WARNING
+              : safeProviderWarning(result.warning),
         })
         if (outcome === 'success') {
-          options.push(...result.options.filter(isBikeCompatible))
+          options.push(...result.options.filter(hasConfirmedNonFoldableBikeService))
         }
-      } catch (error) {
+      } catch {
         sources.push({
           providerId: provider.id,
+          ...(provider.sourceInfo ? { sourceInfo: provider.sourceInfo } : {}),
           outcome: 'unavailable',
           fetchedAt: null,
-          warning: error instanceof Error ? error.message : 'provider failed',
+          warning: PROVIDER_FAILURE_WARNING,
         })
       }
     }
@@ -74,19 +108,30 @@ export class TrainSearchService {
     const partial = successes.length > 0 && sources.some(
       (source) => source.outcome !== 'success' && source.outcome !== 'unsupported',
     )
+    const cacheStatus = cacheStatusForSources(sources)
     const deduplicated = deduplicate(options)
-    const asOf = successes.reduce<string | null>((latest, source) =>
-      !latest || (source.fetchedAt && source.fetchedAt > latest) ? source.fetchedAt : latest,
-    null)
+    const asOf = successes.reduce<string | null>(
+      (latest, source) => latestIsoTimestamp(latest, source.fetchedAt),
+      null,
+    )
 
     return {
       options: deduplicated,
       meta: {
         providerId: firstSuccess?.providerId ?? firstFailure?.providerId ?? 'none',
-        reliability: responseReliability(firstSuccess?.providerId ?? 'none', deduplicated),
+        reliability: responseReliability(
+          firstSuccess?.providerId ?? 'none',
+          deduplicated,
+          firstSuccess !== undefined,
+        ),
         fetchedAt: asOf ?? new Date(this.clock()).toISOString(),
         degraded: partial || coverage !== 'covered',
-        warning: firstFailure?.warning ?? (partial || coverage !== 'covered' ? FALLBACK_WARNING : null),
+        ...(cacheStatus ? { cacheStatus } : {}),
+        warning: firstFailure?.warning ?? (
+          coverage !== 'unsupported' && (partial || coverage !== 'covered')
+            ? PROVIDER_FAILURE_WARNING
+            : null
+        ),
         coverage,
         asOf,
         partial,
@@ -94,10 +139,6 @@ export class TrainSearchService {
       },
     }
   }
-}
-
-function isBikeCompatible(train: TrainOption) {
-  return train.bikeAllowed === true && train.bikeType === 'non_foldable'
 }
 
 function deduplicate(options: TrainOption[]) {

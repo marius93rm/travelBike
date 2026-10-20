@@ -8,9 +8,10 @@ import {
 
 describe('Romanian station catalog', () => {
   it('contains the commercial stops from the official 2025–2026 timetable', () => {
-    expect(stations.length).toBeGreaterThan(1_000)
+    expect(stations).toHaveLength(1_366)
     expect(stationCatalogMeta).toMatchObject({
       source: 'data.gov.ro / S.C. Informatică Feroviară S.A.',
+      exportedAt: '2025-12-03',
       validFrom: '2025-12-14',
       validUntil: '2026-12-12',
     })

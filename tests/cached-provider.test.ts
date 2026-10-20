@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CachedTrainProvider } from '../server/providers/cached-train-provider.js'
+import { ControlledTrainProvider } from '../server/providers/controlled-train-provider.js'
 import { MemoryCacheStore } from '../server/cache/cache-store.js'
 import type { TrainDataProvider } from '../server/providers/train-data-provider.js'
 
@@ -12,6 +13,24 @@ const criteria = {
 
 describe('CachedTrainProvider', () => {
   afterEach(() => vi.restoreAllMocks())
+
+  it('preserves public source metadata through the operational wrappers', () => {
+    const sourceInfo = {
+      name: 'CFR Călători',
+      url: 'https://bilete.cfrcalatori.ro/ro-RO/Itineraries',
+    }
+    const provider: TrainDataProvider = {
+      id: 'cfr',
+      sourceInfo,
+      async search() {
+        return { options: [], providerId: 'cfr', fetchedAt: '2026-09-03T10:00:00Z' }
+      },
+    }
+    const controlled = new ControlledTrainProvider(provider)
+    const cached = new CachedTrainProvider(controlled)
+
+    expect(cached.sourceInfo).toEqual(sourceInfo)
+  })
 
   it('never serves cached data after the one-hour TTL expires', async () => {
     const observedAt = Date.parse('2026-09-03T10:00:00Z')
@@ -85,9 +104,11 @@ describe('CachedTrainProvider', () => {
       store: new MemoryCacheStore(), ttlMs: 1_000,
       clock: () => Date.parse('2026-09-03T10:00:30Z'),
     })
-    await cached.search(criteria)
-    await cached.search(criteria)
+    const live = await cached.search(criteria)
+    const fromCache = await cached.search(criteria)
     expect(calls).toBe(1)
+    expect(live.cached).toBeUndefined()
+    expect(fromCache).toMatchObject({ cached: true, fetchedAt: '2026-09-03T10:00:00Z' })
   })
 
   it('rejects a successful response already observed more than one hour ago', async () => {

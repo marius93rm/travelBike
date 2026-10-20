@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
 import { createApp } from '../server/app.js'
+import { CFR_PUBLIC_PROVIDER_LINK } from '../server/providers/cfr-train-provider.js'
 import { FallbackTrainProvider } from '../server/providers/fallback-train-provider.js'
 import { TrainSearchService } from '../server/services/train-search-service.js'
 import { DestinationDiscoveryService } from '../server/services/destination-discovery-service.js'
 import type { TrainDataProvider } from '../server/providers/train-data-provider.js'
 import { createPilotStationConfig } from '../server/config/pilot.js'
 import { ControlledTrainProvider } from '../server/providers/controlled-train-provider.js'
+import type { DestinationSearchResponse } from '../src/domain/train.js'
 
 const demoProvider = new FallbackTrainProvider({ demoEnabled: true })
 const fallbackProvider: TrainDataProvider = {
@@ -74,6 +76,19 @@ describe('GET /api/trains', () => {
     expect(response.body).toMatchObject({ options: [], meta: { coverage: 'unsupported' } })
   })
 
+  it('accepts the thirtieth calendar day and rejects the next day', async () => {
+    const lastAllowedDay = await request(app).get('/api/trains').query({
+      from: 'codlea', to: 'brasov', date: '2026-10-02', bike: 'true',
+    })
+    const firstOutsideDay = await request(app).get('/api/trains').query({
+      from: 'codlea', to: 'brasov', date: '2026-10-03', bike: 'true',
+    })
+
+    expect(lastAllowedDay.status).toBe(200)
+    expect(firstOutsideDay.status).toBe(400)
+    expect(firstOutsideDay.body.issues[0].message).toContain('30')
+  })
+
   it('rejects dates outside the bounded journey window', async () => {
     const response = await request(app).get('/api/trains').query({
       from: 'codlea',
@@ -95,6 +110,32 @@ describe('GET /api/trains', () => {
 
     expect(response.status).toBe(400)
   })
+
+  it('rejects every search after catalog expiry without consulting providers', async () => {
+    const provider = new FallbackTrainProvider({ demoEnabled: true })
+    const search = vi.spyOn(provider, 'search')
+    const expiredApp = createApp(
+      new TrainSearchService([provider]),
+      undefined,
+      () => new Date('2026-12-13T09:00:00+02:00'),
+      {
+        pilot: createPilotStationConfig('brasov,codlea'),
+        journeySearchAvailable: true,
+        providerReady: true,
+      },
+    )
+
+    const response = await request(expiredApp).get('/api/trains').query({
+      from: 'codlea',
+      to: 'brasov',
+      date: '2026-12-13',
+      bike: 'true',
+    })
+
+    expect(response.status).toBe(400)
+    expect(search).not.toHaveBeenCalled()
+    search.mockRestore()
+  })
 })
 
 describe('GET /api/destinations', () => {
@@ -111,6 +152,43 @@ describe('GET /api/destinations', () => {
     expect(response.body.options[0].destinationStationId).toBe('codlea')
     expect(response.body.options[0].departures[0].trainNumber).toBe('1621')
     expect(response.body.options[0].returns[0].trainNumber).toBe('1622')
+  })
+
+  it('does not expose discovered destinations outside the configured pilot', async () => {
+    const discoveryResponse: DestinationSearchResponse = {
+      options: [{ destinationStationId: 'cfr-20658', departures: [], returns: [] }],
+      meta: {
+        providerId: 'test-provider',
+        reliability: 'official',
+        fetchedAt: '2026-09-03T08:00:00+03:00',
+        asOf: '2026-09-03T08:00:00+03:00',
+        degraded: false,
+        warning: null,
+        coverage: 'covered',
+        partial: false,
+        sources: [],
+      },
+    }
+    const discovery = { search: vi.fn().mockResolvedValue(discoveryResponse) }
+    const scopedApp = createApp(
+      new TrainSearchService([]),
+      discovery as unknown as DestinationDiscoveryService,
+      () => new Date('2026-09-03T09:00:00+03:00'),
+      {
+        pilot: createPilotStationConfig('brasov,codlea'),
+        journeySearchAvailable: false,
+        discoveryAvailable: true,
+        providerReady: true,
+      },
+    )
+
+    const response = await request(scopedApp).get('/api/destinations').query({
+      from: 'brasov', date: '2026-09-03', bike: 'true', direct: 'true',
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.body.options).toEqual([])
+    expect(discovery.search).toHaveBeenCalledOnce()
   })
 
   it('rejects discovery requests that allow changes', async () => {
@@ -202,6 +280,7 @@ describe('operational API endpoints', () => {
         journeySearchAvailable: false,
         discoveryAvailable: false,
         providerReady: false,
+        providerLinks: [CFR_PUBLIC_PROVIDER_LINK],
       },
     )
 
@@ -209,14 +288,114 @@ describe('operational API endpoints', () => {
       from: 'brasov', to: 'codlea', date: '2026-09-03', bike: 'true',
     })
     expect(route.status).toBe(200)
-    expect(route.body).toMatchObject({ options: [], meta: { coverage: 'unavailable' } })
+    expect(route.body).toMatchObject({
+      options: [],
+      meta: {
+        coverage: 'unavailable', providerStatus: 'disabled', reliability: null,
+        sources: [{
+          providerId: 'cfr',
+          sourceInfo: {
+            name: 'CFR Călători',
+            url: 'https://bilete.cfrcalatori.ro/ro-RO/Itineraries',
+          },
+          outcome: 'unavailable', fetchedAt: null, warning: null,
+        }],
+      },
+    })
+    expect(route.body.meta.sources[0].searchUrl).toBeDefined()
+    const searchUrl = new URL(route.body.meta.sources[0].searchUrl)
+    expect(searchUrl.searchParams.get('DepartureStationName')).toBe('Brașov')
+    expect(searchUrl.searchParams.get('ArrivalStationName')).toBe('Codlea')
+    expect(searchUrl.searchParams.get('DepartureDate')).toBe('03.09.2026')
+    expect(searchUrl.searchParams.get('IsBikesServiceRequired')).toBe('True')
+
+    const coverage = await request(app).get('/api/coverage').query({
+      from: 'brasov', to: 'codlea', date: '2026-09-03',
+    })
+    expect(coverage.body.route).toMatchObject({
+      coverage: 'unavailable', providerStatus: 'disabled',
+    })
+
+    const readiness = await request(app).get('/api/readiness')
+    expect(readiness.body.providers.journeySearch).toBe('disabled')
 
     const discovery = await request(app).get('/api/destinations').query({
       from: 'brasov', date: '2026-09-03', bike: 'true', direct: 'true',
     })
     expect(discovery.status).toBe(200)
-    expect(discovery.body).toMatchObject({ options: [], meta: { coverage: 'unsupported' } })
+    expect(discovery.body).toMatchObject({
+      options: [], meta: { coverage: 'unsupported', reliability: null },
+    })
     expect(search).not.toHaveBeenCalled()
+  })
+
+  it('reports a configured but unready source as unavailable rather than disabled', async () => {
+    const app = createApp(
+      new TrainSearchService([]),
+      undefined,
+      () => new Date('2026-09-03T09:00:00+03:00'),
+      {
+        pilot: createPilotStationConfig('brasov,codlea'),
+        journeySearchAvailable: true,
+        providerReady: false,
+      },
+    )
+
+    const route = await request(app).get('/api/trains').query({
+      from: 'brasov', to: 'codlea', date: '2026-09-03', bike: 'true',
+    })
+    expect(route.body.meta).toMatchObject({
+      coverage: 'unavailable', providerStatus: 'unavailable',
+    })
+
+    const coverage = await request(app).get('/api/coverage').query({
+      from: 'brasov', to: 'codlea', date: '2026-09-03',
+    })
+    expect(coverage.body.route).toMatchObject({
+      coverage: 'unavailable', providerStatus: 'unavailable',
+    })
+
+    const readiness = await request(app).get('/api/readiness')
+    expect(readiness.status).toBe(503)
+    expect(readiness.body.providers.journeySearch).toBe('unavailable')
+  })
+
+  it('prefills the operator search link when a live provider is temporarily unavailable', async () => {
+    const provider: TrainDataProvider = {
+      id: 'cfr',
+      sourceInfo: CFR_PUBLIC_PROVIDER_LINK.sourceInfo,
+      async search() {
+        return {
+          options: [],
+          providerId: 'cfr',
+          fetchedAt: '2026-09-03T09:00:00+03:00',
+          outcome: 'unavailable',
+        }
+      },
+    }
+    const app = createApp(
+      new TrainSearchService([provider], () => Date.parse('2026-09-03T09:00:00+03:00')),
+      undefined,
+      () => new Date('2026-09-03T09:00:00+03:00'),
+      {
+        pilot: createPilotStationConfig('brasov,codlea'),
+        journeySearchAvailable: true,
+        providerReady: true,
+        providerLinks: [CFR_PUBLIC_PROVIDER_LINK],
+      },
+    )
+
+    const route = await request(app).get('/api/trains').query({
+      from: 'codlea', to: 'brasov', date: '2026-09-03', bike: 'true',
+    })
+    const source = route.body.meta.sources[0]
+    const searchUrl = new URL(source.searchUrl)
+
+    expect(source.outcome).toBe('unavailable')
+    expect(searchUrl.searchParams.get('DepartureStationName')).toBe('Codlea')
+    expect(searchUrl.searchParams.get('ArrivalStationName')).toBe('Brașov')
+    expect(searchUrl.searchParams.get('DepartureDate')).toBe('03.09.2026')
+    expect(searchUrl.searchParams.get('IsBikesServiceRequired')).toBe('True')
   })
 
   it('rate limits incoming API requests and supplies Retry-After', async () => {
@@ -232,6 +411,26 @@ describe('operational API endpoints', () => {
     expect(response.body).toEqual({
       error: 'rate_limited', message: 'Prea multe cereri. Încearcă din nou în curând.',
     })
+  })
+
+  it('uses only valid addresses from a configured Cloudflare client-IP header', async () => {
+    const app = createApp(new TrainSearchService([]), undefined, undefined, {
+      rateLimit: {
+        windowMs: 60_000,
+        maxRequests: 1,
+        clientIpHeader: 'cf-connecting-ip',
+      },
+    })
+    const send = (clientIp: string, forwardedFor: string) =>
+      request(app).get('/api/missing')
+        .set('cf-connecting-ip', clientIp)
+        .set('x-forwarded-for', forwardedFor)
+
+    await send('203.0.113.10', '198.51.100.99').expect(404)
+    await send('203.0.113.11', '198.51.100.99').expect(404)
+    await send('203.0.113.10', '198.51.100.100').expect(429)
+    await send('not-an-ip', '198.51.100.99').expect(404)
+    await send('203.0.113.12, 203.0.113.13', '198.51.100.100').expect(429)
   })
 
   it('never accepts a national station outside the versioned regional allowlist', async () => {

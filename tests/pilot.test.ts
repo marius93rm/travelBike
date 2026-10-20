@@ -20,6 +20,14 @@ describe('regional pilot allowlist', () => {
     expect(pilotStations.every((station) => stationsById.has(station.id))).toBe(true)
     expect(pilotStations.every((station) => station.source.length > 0)).toBe(true)
     expect(pilotStations.every((station) => station.sourceUrl.startsWith('https://'))).toBe(true)
+    expect(pilotStations).toHaveLength(144)
+    const countsByCounty = Object.fromEntries(
+      ['Brașov', 'Sibiu', 'Covasna', 'Mureș'].map((county) => [
+        county,
+        pilotStations.filter((station) => station.county === county).length,
+      ]),
+    )
+    expect(countsByCounty).toEqual({ Brașov: 39, Sibiu: 52, Covasna: 9, Mureș: 44 })
     expect(createPilotStationConfig().mappingComplete).toBe(true)
     expect(pilotAllowlistVersion).toBe('2026-09-16-counties-v1')
   })

@@ -41,14 +41,15 @@ export function StationCombobox({
   const selectedStation = stationsById.get(stationId)
   const [query, setQuery] = useState(selectedStation?.name ?? '')
   const [open, setOpen] = useState(false)
-  const [activeIndex, setActiveIndex] = useState(0)
+  const [activeIndex, setActiveIndex] = useState(-1)
   const activeOptionRef = useRef<HTMLDivElement>(null)
   const suggestions = useMemo(() => searchStations(query), [query])
+  const popupOpen = open && suggestions.length > 0
 
   function selectStation(station: Station) {
     setQuery(station.name)
     setOpen(false)
-    setActiveIndex(0)
+    setActiveIndex(-1)
     onValidityChange(true)
     onChange(station.id)
   }
@@ -57,7 +58,7 @@ export function StationCombobox({
     const nextQuery = event.target.value
     setQuery(nextQuery)
     setOpen(true)
-    setActiveIndex(0)
+    setActiveIndex(-1)
     onValidityChange(
       Boolean(
         selectedStation &&
@@ -72,14 +73,18 @@ export function StationCombobox({
       event.preventDefault()
       setOpen(true)
       setActiveIndex((current) =>
-        Math.min(current + (open ? 1 : 0), suggestions.length - 1),
+        current < 0 ? 0 : Math.min(current + 1, suggestions.length - 1),
       )
     }
 
     if (event.key === 'ArrowUp') {
       event.preventDefault()
       setOpen(true)
-      setActiveIndex((current) => Math.max(current - 1, 0))
+      setActiveIndex((current) =>
+        current < 0
+          ? suggestions.length - 1
+          : Math.max(current - 1, 0),
+      )
     }
 
     if (event.key === 'Enter' && open && suggestions[activeIndex]) {
@@ -87,15 +92,21 @@ export function StationCombobox({
       selectStation(suggestions[activeIndex])
     }
 
+    if (event.key === 'Tab') {
+      setOpen(false)
+      setActiveIndex(-1)
+    }
+
     if (event.key === 'Escape') {
       setQuery(selectedStation?.name ?? '')
       setOpen(false)
+      setActiveIndex(-1)
       onValidityChange(Boolean(selectedStation))
     }
   }
 
   const activeOptionId =
-    open && suggestions[activeIndex]
+    popupOpen && suggestions[activeIndex]
       ? `${id}-option-${suggestions[activeIndex].id}`
       : undefined
 
@@ -118,8 +129,8 @@ export function StationCombobox({
           value={query}
           placeholder={ro.stationPlaceholder}
           aria-autocomplete="list"
-          aria-expanded={open}
-          aria-controls={open ? listboxId : undefined}
+          aria-expanded={popupOpen}
+          aria-controls={popupOpen ? listboxId : undefined}
           aria-activedescendant={activeOptionId}
           aria-invalid={invalid}
           aria-describedby={invalid ? errorId : undefined}
@@ -134,35 +145,35 @@ export function StationCombobox({
         />
 
         {open ? (
-          <>
-            <p className="sr-only" role="status" aria-live="polite">
-              {ro.stationSuggestionsCount(suggestions.length)}
-            </p>
-            <div className="station-suggestions" id={listboxId} role="listbox">
-            {suggestions.length > 0 ? (
-              suggestions.map((station, index) => (
-                <div
-                  ref={index === activeIndex ? activeOptionRef : undefined}
-                  id={`${id}-option-${station.id}`}
-                  className={index === activeIndex ? 'active' : undefined}
-                  role="option"
-                  aria-selected={station.id === stationId}
-                  key={station.id}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => selectStation(station)}
-                >
-                  <span>{station.name}</span>
-                  <small>{ro.railStation}</small>
-                </div>
-              ))
-            ) : (
-              <p className="station-no-results">{ro.noStationFound}</p>
-            )}
-            </div>
-          </>
+          <p className="sr-only" role="status" aria-live="polite">
+            {ro.stationSuggestionsCount(suggestions.length)}
+          </p>
+        ) : null}
+        {popupOpen ? (
+          <div className="station-suggestions" id={listboxId} role="listbox">
+            {suggestions.map((station, index) => (
+              <div
+                ref={index === activeIndex ? activeOptionRef : undefined}
+                id={`${id}-option-${station.id}`}
+                className={index === activeIndex ? 'active' : undefined}
+                role="option"
+                aria-label={`${station.name}, ${ro.railStation}`}
+                aria-selected={station.id === stationId}
+                key={station.id}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => selectStation(station)}
+              >
+                <span>{station.name}</span>
+                <small>{ro.railStation}</small>
+              </div>
+            ))}
+          </div>
         ) : null}
       </div>
+      {open && suggestions.length === 0 ? (
+        <p className="station-no-results">{ro.noStationFound}</p>
+      ) : null}
       {invalid ? <p className="field-error" id={errorId} role="alert">{ro.selectStationError}</p> : null}
     </div>
   )

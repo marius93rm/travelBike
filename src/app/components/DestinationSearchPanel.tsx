@@ -1,25 +1,35 @@
 import { Bike, CalendarDays, MapPinned } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type Ref } from 'react'
 import type {
   DestinationSearchCriteria,
   StationId,
 } from '../../domain/train.js'
-import { journeyDateBounds } from '../../domain/journey-date.js'
+import {
+  formatJourneyDate,
+  JOURNEY_DATE_WINDOW_DAYS,
+  journeyDateBounds,
+} from '../../domain/journey-date.js'
 import { ro } from '../../i18n/ro.js'
 import { StationCombobox } from './StationCombobox.js'
 
 interface DestinationSearchPanelProps {
+  hidden?: boolean
   criteria: DestinationSearchCriteria
+  dateInputRef?: Ref<HTMLInputElement>
   loading: boolean
   disabled?: boolean
+  disabledReason?: string
   onChange: (criteria: DestinationSearchCriteria) => void
   onSearch: () => void
 }
 
 export function DestinationSearchPanel({
+  hidden = false,
   criteria,
+  dateInputRef,
   loading,
   disabled = false,
+  disabledReason,
   onChange,
   onSearch,
 }: DestinationSearchPanelProps) {
@@ -35,7 +45,7 @@ export function DestinationSearchPanel({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitted(true)
-    if (!stationValid) return
+    if (loading || dateBounds.catalogExpired || disabled || !stationValid) return
     onSearch()
   }
 
@@ -48,11 +58,12 @@ export function DestinationSearchPanel({
       id="discover-search-panel"
       role="tabpanel"
       aria-labelledby="discover-mode-tab"
+      hidden={hidden}
     >
       <div className="search-heading discover-heading">
         <div>
           <p className="eyebrow">{ro.discoverEyebrow}</p>
-          <h1 id="journey-search-title">{ro.discoverHeadline}</h1>
+          <h1 id="discover-search-title">{ro.discoverHeadline}</h1>
           <p>{ro.discoverIntro}</p>
         </div>
         <div className="bike-rule bike-rule-desktop">
@@ -79,21 +90,41 @@ export function DestinationSearchPanel({
             <CalendarDays size={18} aria-hidden="true" />
             <input
               id="discover-date"
+              ref={dateInputRef}
               type="date"
               value={criteria.date}
               min={dateBounds.min}
               max={dateBounds.max}
+              disabled={dateBounds.catalogExpired}
+              aria-describedby="discover-date-hint"
               onChange={(event) => onChange({ ...criteria, date: event.target.value })}
               required
             />
           </div>
         </div>
 
-        <button className="search-button" type="submit" disabled={loading || disabled}>
+        <button
+          className="search-button"
+          type="submit"
+          disabled={loading || disabled || dateBounds.catalogExpired}
+          aria-describedby={`discover-date-hint${disabledReason ? ' discover-action-reason' : ''}`}
+        >
           <MapPinned size={19} aria-hidden="true" />
           {ro.showDestinations}
         </button>
       </form>
+
+      {disabledReason ? (
+        <p id="discover-action-reason" className="date-range-hint discovery-action-reason">
+          {disabledReason}
+        </p>
+      ) : null}
+
+      <p id="discover-date-hint" className="date-range-hint">
+        {dateBounds.catalogExpired
+          ? ro.catalogExpiredBody(formatJourneyDate(dateBounds.catalogValidUntil))
+          : ro.dateRangeHint(formatJourneyDate(dateBounds.max), JOURNEY_DATE_WINDOW_DAYS)}
+      </p>
 
       <div className="bike-locked">
         <span className="bike-locked-check" aria-hidden="true"><Bike size={18} /></span>

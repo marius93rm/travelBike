@@ -18,9 +18,10 @@ describe('FallbackTrainProvider', () => {
       arrivalStationId: 'brasov',
       bikeAllowed: true,
       bikeCapacity: null,
-      bikeFeeLei: 8,
+      bikeFeeLei: null,
       reliability: 'fallback',
     })
+    expect(result.options[0]?.bookingUrl).toBeUndefined()
   })
 
   it('returns only IR 1621 from Brașov to Codlea', async () => {

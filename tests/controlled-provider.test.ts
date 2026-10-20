@@ -19,6 +19,20 @@ function success(providerId = 'cfr') {
 }
 
 describe('ControlledTrainProvider', () => {
+  it('does not expose provider exception details in the public warning', async () => {
+    const privateDiagnostic = 'Authorization: Bearer private-session-token'
+    const provider: TrainDataProvider = {
+      id: 'cfr',
+      async search() { throw new Error(privateDiagnostic) },
+    }
+    const controlled = new ControlledTrainProvider(provider)
+
+    const result = await controlled.search(criteria)
+
+    expect(result.warning).toContain('Nu afișăm orare neverificate')
+    expect(result.warning).not.toContain(privateDiagnostic)
+  })
+
   it('limits concurrent upstream searches across different requests', async () => {
     let active = 0
     let highest = 0

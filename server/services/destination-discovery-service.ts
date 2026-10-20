@@ -7,18 +7,69 @@ import type {
   TrainOption,
   TrainSearchSource,
 } from '../../src/domain/train.js'
+import {
+  cacheStatusForSources,
+  hasConfirmedNonFoldableBikeService,
+  reliabilityForProviderId,
+} from '../../src/domain/train.js'
+import { dateInRomania } from '../../src/domain/journey-date.js'
+import { latestIsoTimestamp } from '../lib/date-time.js'
+import {
+  PROVIDER_FAILURE_WARNING,
+  PROVIDER_FRESHNESS_WARNING,
+  PROVIDER_INVALID_RESULT_WARNING,
+  safeProviderWarning,
+} from '../lib/provider-warnings.js'
 import type { TrainDataProvider } from '../providers/train-data-provider.js'
 
-const FALLBACK_WARNING =
-  'Sursa live nu este disponibilă. Afișăm ultima informație verificată disponibilă.'
 const MAX_CURRENT_AGE_MS = 60 * 60 * 1000
 
 function isCompatibleDirectTrain(train: TrainOption) {
   return (
-    train.bikeAllowed === true &&
-    train.bikeType === 'non_foldable' &&
+    hasConfirmedNonFoldableBikeService(train) &&
     train.changes === 0
   )
+}
+
+function hasValidJourneyTimes(train: TrainOption) {
+  const departureAt = Date.parse(train.departureAt)
+  const arrivalAt = Date.parse(train.arrivalAt)
+  return Number.isFinite(departureAt)
+    && Number.isFinite(arrivalAt)
+    && arrivalAt >= departureAt
+}
+
+function matchesOutbound(
+  train: TrainOption,
+  option: DirectDestinationOption,
+  criteria: DestinationSearchCriteria,
+) {
+  return hasValidJourneyTimes(train)
+    && train.departureStationId === criteria.from
+    && train.arrivalStationId === option.destinationStationId
+    && dateInRomania(new Date(train.departureAt)) === criteria.date
+}
+
+function matchesReturn(
+  train: TrainOption,
+  option: DirectDestinationOption,
+  criteria: DestinationSearchCriteria,
+) {
+  return hasValidJourneyTimes(train)
+    && train.departureStationId === option.destinationStationId
+    && train.arrivalStationId === criteria.from
+}
+
+function hasMismatchedDirectBikeResult(
+  options: DirectDestinationOption[],
+  criteria: DestinationSearchCriteria,
+) {
+  return options.some((option) => (
+    option.departures.some((train) => isCompatibleDirectTrain(train)
+      && (option.destinationStationId === criteria.from || !matchesOutbound(train, option, criteria)))
+    || option.returns.some((train) => isCompatibleDirectTrain(train)
+      && !matchesReturn(train, option, criteria))
+  ))
 }
 
 function normalizeOption(
@@ -29,8 +80,7 @@ function normalizeOption(
     .filter(
       (train) =>
         isCompatibleDirectTrain(train) &&
-        train.departureStationId === criteria.from &&
-        train.arrivalStationId === option.destinationStationId,
+        matchesOutbound(train, option, criteria),
     )
     .sort((left, right) => left.departureAt.localeCompare(right.departureAt))
 
@@ -41,8 +91,7 @@ function normalizeOption(
     .filter(
       (train) =>
         isCompatibleDirectTrain(train) &&
-        train.departureStationId === option.destinationStationId &&
-        train.arrivalStationId === criteria.from &&
+        matchesReturn(train, option, criteria) &&
         Date.parse(train.departureAt) > firstArrival,
     )
     .sort((left, right) => left.departureAt.localeCompare(right.departureAt))
@@ -55,10 +104,12 @@ function normalizeOption(
 function reliabilityFor(
   providerId: string,
   options: DirectDestinationOption[],
-): Reliability {
+  hasSuccess: boolean,
+): Reliability | null {
   const firstTrain = options[0]?.departures[0]
   if (firstTrain) return firstTrain.reliability
-  return providerId === 'fallback' ? 'fallback' : 'official'
+  if (!hasSuccess) return null
+  return reliabilityForProviderId(providerId)
 }
 
 export class DestinationDiscoveryService {
@@ -89,15 +140,22 @@ export class DestinationDiscoveryService {
           || ageMs > MAX_CURRENT_AGE_MS
           || ageMs < -5 * 60 * 1000
         )
+        const mismatchedDirectBikeResult = reportedOutcome === 'success'
+          && hasMismatchedDirectBikeResult(result.options, criteria)
         const outcome = result.stale === true || outsideFreshnessWindow
           ? 'unavailable'
-          : reportedOutcome
+          : mismatchedDirectBikeResult ? 'invalid_payload' : reportedOutcome
+        const sourceInfo = result.sourceInfo ?? provider.sourceInfo
         sources.push({
           providerId: result.providerId, outcome,
+          ...(outcome === 'success' && result.cached === true ? { cached: true } : {}),
+          ...(sourceInfo ? { sourceInfo } : {}),
           fetchedAt: outcome === 'success' ? result.fetchedAt : null,
           warning: outsideFreshnessWindow
-            ? 'Datele providerului nu se încadrează în fereastra de actualitate de o oră.'
-            : result.warning ?? null,
+            ? PROVIDER_FRESHNESS_WARNING
+            : mismatchedDirectBikeResult
+              ? PROVIDER_INVALID_RESULT_WARNING
+              : safeProviderWarning(result.warning),
         })
         if (outcome === 'success') {
           options.push(...result.options
@@ -105,10 +163,11 @@ export class DestinationDiscoveryService {
             .map((option) => normalizeOption(option, criteria))
             .filter((option): option is DirectDestinationOption => option !== null))
         }
-      } catch (error) {
+      } catch {
         sources.push({
           providerId: provider.id, outcome: 'unavailable', fetchedAt: null,
-          warning: error instanceof Error ? error.message : 'provider failed',
+          ...(provider.sourceInfo ? { sourceInfo: provider.sourceInfo } : {}),
+          warning: PROVIDER_FAILURE_WARNING,
         })
       }
     }
@@ -121,9 +180,11 @@ export class DestinationDiscoveryService {
     const partial = successes.length > 0 && sources.some(
       (source) => source.outcome !== 'success' && source.outcome !== 'unsupported',
     )
-    const asOf = successes.reduce<string | null>((latest, source) =>
-      !latest || (source.fetchedAt && source.fetchedAt > latest) ? source.fetchedAt : latest,
-    null)
+    const cacheStatus = cacheStatusForSources(sources)
+    const asOf = successes.reduce<string | null>(
+      (latest, source) => latestIsoTimestamp(latest, source.fetchedAt),
+      null,
+    )
     const normalized = deduplicateDestinations(options).sort((left, right) =>
       left.departures[0].departureAt.localeCompare(right.departures[0].departureAt),
     )
@@ -131,10 +192,19 @@ export class DestinationDiscoveryService {
       options: normalized,
       meta: {
         providerId: successes[0]?.providerId ?? failure?.providerId ?? 'none',
-        reliability: reliabilityFor(successes[0]?.providerId ?? 'none', normalized),
+        reliability: reliabilityFor(
+          successes[0]?.providerId ?? 'none',
+          normalized,
+          successes.length > 0,
+        ),
         fetchedAt: asOf ?? new Date(this.clock()).toISOString(),
         degraded: partial || coverage !== 'covered',
-        warning: failure?.warning ?? (partial || coverage !== 'covered' ? FALLBACK_WARNING : null),
+        ...(cacheStatus ? { cacheStatus } : {}),
+        warning: failure?.warning ?? (
+          coverage !== 'unsupported' && (partial || coverage !== 'covered')
+            ? PROVIDER_FAILURE_WARNING
+            : null
+        ),
         coverage,
         asOf,
         partial,

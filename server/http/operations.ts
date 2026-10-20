@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { isIP } from 'node:net'
 import type { RequestHandler } from 'express'
 
 export interface ApiLogger {
@@ -8,6 +9,7 @@ export interface ApiLogger {
 export interface RateLimitOptions {
   windowMs: number
   maxRequests: number
+  clientIpHeader?: string
 }
 
 interface RateLimitEntry {
@@ -55,7 +57,12 @@ export function apiRateLimit(options: RateLimitOptions): RequestHandler {
   return (request, response, next) => {
     if (!request.path.startsWith('/api/')) return next()
     if (request.path === '/api/health' || request.path === '/api/readiness') return next()
-    const key = request.ip || 'unknown'
+    const headerIp = options.clientIpHeader
+      ? request.get(options.clientIpHeader)?.trim()
+      : undefined
+    const key = headerIp && isIP(headerIp) !== 0
+      ? headerIp
+      : request.ip || 'unknown'
     const now = Date.now()
     if (now >= nextSweepAt) {
       for (const [entryKey, entry] of entries) {

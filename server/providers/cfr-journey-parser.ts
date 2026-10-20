@@ -1,6 +1,10 @@
 import { load } from 'cheerio'
 import type { TrainOption, TrainSearchCriteria } from '../../src/domain/train.js'
 import { scheduledAt } from '../lib/date-time.js'
+import { cfrBikeCapacityPolicy } from './cfr-bike-capacity-policy.js'
+import { cfrBikeReservationPolicy } from './cfr-bike-reservation-policy.js'
+import { cfrBikeTicketPolicy } from './cfr-bike-ticket-policy.js'
+import { cfrBikeTariffPolicy } from './cfr-bike-tariff-policy.js'
 
 const OPTION_SELECTOR =
   '[data-itinerary], .itinerary-result, .itineraryRow, .result-itinerary, li[id^="li-itinerary-"]'
@@ -80,11 +84,7 @@ export function parseCfrJourneyHtml(
       return
     }
 
-    const reservation = row.attr('data-bike-reservation')
-    const bikeReservation =
-      reservation === 'required' || reservation === 'not_required'
-        ? reservation
-        : 'unknown'
+    const bikeReservation = cfrBikeReservationPolicy.status
     const operator = row.attr('data-operator') ?? 'CFR Călători'
 
     options.push({
@@ -105,6 +105,10 @@ export function parseCfrJourneyHtml(
       bikeAllowed: true,
       bikeType: 'non_foldable',
       bikeReservation,
+      bikeReservationEvidence: cfrBikeReservationPolicy.evidence,
+      bikeCapacityEvidence: cfrBikeCapacityPolicy.evidence,
+      bikeTicketPurchaseEvidence: cfrBikeTicketPolicy.evidence,
+      bikeFeeEvidence: cfrBikeTariffPolicy.evidence,
       bikeCapacity: null,
       bikeFeeLei: null,
       source: 'CFR Călători',

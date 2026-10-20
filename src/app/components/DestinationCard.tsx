@@ -1,7 +1,9 @@
-import { ArrowRight, Bike, CornerDownLeft, MapPin, TrainFront } from 'lucide-react'
+import { ArrowRight, Bike, CornerDownLeft, ExternalLink, MapPin, ShieldCheck, TrainFront } from 'lucide-react'
 import { stationsById } from '../../domain/stations.js'
 import type { DirectDestinationOption, StationId, TrainOption } from '../../domain/train.js'
 import { ro } from '../../i18n/ro.js'
+import { formatVerification } from '../format-verification.js'
+import { BikeFeeDetails } from './BikeFeeDetails.js'
 
 interface DestinationCardProps {
   option: DirectDestinationOption
@@ -40,6 +42,24 @@ function JourneySummary({ train }: { train: TrainOption }) {
   )
 }
 
+function JourneySourceDetails({ train }: { train: TrainOption }) {
+  return (
+    <div className="destination-journey-source">
+      <a
+        href={train.sourceUrl}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={`${ro.sourceVerified(train.source)} ${ro.opensNewTab}`}
+      >
+        <ShieldCheck size={14} aria-hidden="true" />
+        {ro.sourceVerified(train.source)}
+        <ExternalLink size={12} aria-hidden="true" />
+      </a>
+      <small>{formatVerification(train.lastVerifiedAt)}</small>
+    </div>
+  )
+}
+
 export function DestinationCard({
   option,
   originId,
@@ -66,6 +86,10 @@ export function DestinationCard({
           <p className="journey-label"><Bike size={16} aria-hidden="true" /> {ro.outboundDirect}</p>
           <JourneySummary train={departure} />
           <small><time dateTime={departure.departureAt}>{formatDay(departure.departureAt)}</time> · {departure.durationMinutes} {ro.minutesShort} · {departure.operator}</small>
+          <div className="fee-copy destination-fee">
+            <BikeFeeDetails train={departure} />
+          </div>
+          <JourneySourceDetails train={departure} />
         </section>
         <section aria-label={ro.returnDirect}>
           <p className="journey-label"><CornerDownLeft size={16} aria-hidden="true" /> {ro.returnDirect}</p>
@@ -75,10 +99,33 @@ export function DestinationCard({
               <small>
                 <time dateTime={returnTrain.departureAt}>{formatDay(returnTrain.departureAt)}</time>
                 {' · '}
-                {option.returns.length > 1
-                  ? ro.moreReturns(option.returns.length - 1)
-                  : returnTrain.operator}
+                {returnTrain.durationMinutes} {ro.minutesShort} · {returnTrain.operator}
               </small>
+              <div className="fee-copy destination-fee">
+                <BikeFeeDetails train={returnTrain} />
+              </div>
+              <JourneySourceDetails train={returnTrain} />
+              {option.returns.length > 1 ? (
+                <details className="more-return-options">
+                  <summary>{ro.moreReturns(option.returns.length - 1)}</summary>
+                  <ul>
+                    {option.returns.slice(1).map((train) => (
+                      <li key={train.id}>
+                        <JourneySummary train={train} />
+                        <small>
+                          <time dateTime={train.departureAt}>{formatDay(train.departureAt)}</time>
+                          {' · '}
+                          {train.durationMinutes} {ro.minutesShort} · {train.operator}
+                        </small>
+                        <div className="fee-copy destination-fee">
+                          <BikeFeeDetails train={train} />
+                        </div>
+                        <JourneySourceDetails train={train} />
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
             </>
           ) : (
             <p className="return-unavailable">{ro.noReturnFound}</p>

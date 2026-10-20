@@ -7,7 +7,7 @@ export const ro = {
   discoverMode: 'Unde pot ajunge?',
   headline: 'Trenul potrivit pentru tine și bicicleta ta.',
   intro:
-    'Verificăm doar trenurile cu transport confirmat pentru biciclete normale, în aria acoperită de pilot.',
+    'Căutăm curse directe cu transport confirmat pentru biciclete normale, în aria acoperită de pilot.',
   from: 'De la',
   to: 'La',
   stationPlaceholder: 'Scrie orașul sau stația',
@@ -15,7 +15,11 @@ export const ro = {
   noStationFound: 'Nicio stație găsită. Verifică numele introdus.',
   selectStationError: 'Selectează o stație din lista de sugestii.',
   stationSuggestionsCount: (count: number) =>
-    count === 1 ? '1 stație sugerată.' : `${count} stații sugerate.`,
+    count === 0
+      ? 'Nicio stație găsită. Verifică numele introdus.'
+      : count === 1
+        ? '1 stație sugerată.'
+        : `${count} stații sugerate.`,
   discoverEyebrow: 'Idei de călătorie cu bicicleta',
   discoverHeadline: 'Alege de unde pleci. Noi îți arătăm unde poți ajunge.',
   discoverIntro:
@@ -30,34 +34,67 @@ export const ro = {
   date: 'Data',
   swap: 'Inversează direcția',
   search: 'Caută trenuri',
-  bikeOnly: 'Doar trenuri cu bicicletă',
+  prepareOperatorSearch: 'Pregătește linkul pentru verificare',
+  operatorSearchLinkReady: (from: string, to: string, date: string) =>
+    `Linkul de verificare la operator este pregătit pentru ${from} → ${to}, în data de ${date}.`,
+  dateRangeHint: (maxDate: string, windowDays: number) =>
+    `Data maximă pentru căutare: ${maxDate}. Fereastra curentă: până la ${windowDays} de zile calendaristice, inclusiv azi.`,
+  catalogExpiredTitle: 'Catalogul CFR verificat a expirat.',
+  catalogExpiredBody: (validUntil: string) =>
+    `Catalogul este valabil până la ${validUntil}. Căutările sunt oprite până la publicarea și validarea următorului catalog oficial.`,
+  catalogExpiringSoonTitle: 'Catalogul CFR verificat va expira în curând.',
+  catalogExpiringSoonBody: (validUntil: string) =>
+    `Este valabil până la ${validUntil}. Căutările se vor opri dacă următorul catalog oficial nu este publicat și verificat până atunci.`,
+  bikeOnly: 'Doar curse directe cu bicicletă',
   bikeNormal: 'Bicicletă normală',
   bikeRule: 'Sunt afișate doar trenurile cu serviciu oficial de transport biciclete.',
   resultsTitle: 'Trenuri în care poți lua bicicleta',
-  resultsHint: 'Afișăm numai cursele cu serviciu pentru biciclete confirmat de operator.',
+  resultsHint: 'Afișăm numai curse directe cu serviciu pentru biciclete confirmat de operator. Rutele cu schimbări nu sunt incluse.',
+  resultsForRoute: 'Rezultate pentru',
+  destinationsFrom: 'Destinații directe din',
   bikeAccepted: 'Bicicletă acceptată',
+  bikeReservationLabel: 'Rezervarea locului pentru călător',
+  cfrBikeTicketNote: 'Biletul pentru bicicletă este separat. CFR permite cumpărarea online doar dacă numărul biletelor pentru bicicletă este egal cu numărul călătorilor pentru care se cere rezervare și trenul oferă serviciul. La trenurile cu loc rezervat, locurile sunt lângă spațiul bicicletei.',
+  bikeReservation: {
+    required: 'obligatorie',
+    not_required: 'nu este necesară',
+    unknown: 'de verificat la operator',
+  },
   capacityUnknown: 'Locuri biciclete: disponibilitate necunoscută',
+  cfrBikeCapacityNote: 'CFR admite o singură bicicletă nepliabilă de persoană, în limita locurilor disponibile. Nu știm câte locuri mai sunt pentru această cursă; verifică disponibilitatea și biletul pentru bicicletă la CFR.',
   fallbackVerified: 'Date de rezervă verificate',
   buyOnCfr: 'Verifică / cumpără pe CFR',
   verifyAtOperator: (operator: string) => `Verifică la ${operator}`,
   sourceVerified: (source: string) => `Verificat din sursa ${source}`,
   fee: (value: string) => `Supliment bicicletă: ${value}`,
+  distanceBasedFee: 'variază în funcție de distanță; confirmă la CFR',
+  distanceBasedFeeRange: (minimum: number, maximum: number) =>
+    `${minimum}–${maximum} lei (TVA inclus); suma exactă depinde de zona kilometrică și trebuie verificată la CFR`,
   knownCapacity: (value: number) => `Locuri biciclete: ${value}`,
   verificationUnknown: 'Momentul verificării nu este publicat',
   verifiedToday: (time: string) => `Date verificate: astăzi ${time}`,
   verifiedOn: (date: string, time?: string) => `Date verificate: ${date}${time ? `, ${time}` : ''}`,
   routeSelected: 'Ruta selectată',
   compatibleResults: 'Rezultate compatibile',
-  currentOfficialData: 'Date oficiale actuale',
-  cachedOfficialData: 'Date oficiale salvate',
+  officialSource: 'Sursă oficială',
+  sourceReliabilityUnknown: 'Tipul sursei necunoscut',
+  liveSourceResponse: 'Răspuns primit acum de la sursă',
+  cachedData: 'Răspuns din cache, nu live',
+  mixedDataSources: 'Surse mixte: răspunsuri live și salvate',
+  freshnessStateUnknown: 'Starea actualizării nu este cunoscută',
+  resultSourceLabel: 'Sursă verificată:',
+  lastCheckedAt: 'Date verificate la',
   departureWord: 'Plecare',
   arrivalWord: 'Sosire',
   loading: 'Verificăm trenurile compatibile…',
   loadingDestinations: 'Căutăm destinații directe și retururi compatibile…',
-  empty: 'Niciun tren cu transport pentru biciclete găsit pentru această rută și dată.',
+  empty: 'Nu am găsit o cursă directă cu transport pentru biciclete confirmat. Rutele cu schimbări nu sunt incluse în această căutare.',
   coverageUnsupportedTitle: 'Ruta nu este încă acoperită de pilot.',
   coverageUnsupportedBody:
     'Catalogul include stații din toată țara, dar verificarea trenurilor este limitată la aria pilot din județele Brașov, Sibiu, Covasna și Mureș.',
+  liveSearchDisabledTitle: 'Căutarea live CFR nu este activată.',
+  liveSearchDisabledBody:
+    'Nu putem verifica trenurile pe acest serviciu cât timp sursa live este dezactivată. Nu afișăm orare neverificate.',
   coverageUnavailableTitle: 'Datele CFR sunt temporar indisponibile.',
   coverageUnavailableBody:
     'Nu afișăm rezultate vechi sau neverificate. Încearcă din nou după ce sursa oficială revine.',
@@ -70,16 +107,25 @@ export const ro = {
   opensNewTab: '(se deschide într-o filă nouă)',
   resultsCount: (count: number) => count === 1 ? '1 tren compatibil găsit.' : `${count} trenuri compatibile găsite.`,
   homeLabel: 'pagina principală',
-  fallbackRoute: 'Pilot regional cu date verificate',
+  routeEyebrow: 'Pilot regional · stații verificate',
   feeUnknown: 'de verificat',
   minutesShort: 'min',
   ruleEyebrow: 'Regula BikeTrain',
   ruleTitle: 'Bicicleta admisă nu înseamnă loc garantat.',
   ruleBody: 'Afișăm o cursă numai când sursa operatorului indică serviciul pentru biciclete nepliabile. Capacitatea și rezervarea rămân informații separate și sunt marcate ca necunoscute când sursa nu le publică.',
   independentTool: 'Un instrument independent pentru călătorii cu bicicleta.',
+  stationCatalogLabel: 'Catalogul de stații:',
+  stationCatalogSource: 'Mersul trenurilor CFR 2025–2026',
+  stationCatalogExportDate: (date: string) => `exportat la ${date}`,
+  stationCatalogValidUntil: (date: string) => `valabil până la ${date}`,
+  stationCatalogLicenseLead: 'licență',
+  stationCatalogLicense: 'OGL-ROU-1.0',
+  stationCatalogLicenseUrl: 'https://data.gov.ro/ro/pages/licence',
   ticketDisclaimer: 'Nu vindem bilete. Verifică întotdeauna condițiile finale la operator.',
   announcedFallback: 'Sunt afișate date de rezervă verificate.',
-  announcedCached: 'Sunt afișate date oficiale salvate, nu o verificare live.',
+  announcedCached: 'Răspunsul provine din cache; ora ultimei verificări este afișată.',
+  announcedMixedCache: 'Unele surse au răspuns din cache, altele live; ora ultimei verificări este afișată.',
+  announcedCacheUnknown: 'Starea cache-ului nu este disponibilă; ora observației este afișată.',
   directIdeas: 'Explorează fără schimbări',
   destinationResultsTitle: 'Unde poți merge și când te poți întoarce',
   destinationResultsHint:
@@ -91,9 +137,11 @@ export const ro = {
   destinationErrorBody:
     'Încearcă din nou. Nu vom completa lista cu rute neverificate.',
   noDirectDestinations:
-    'Nicio destinație directă cu bicicletă confirmată pentru această zi.',
+    'Nicio destinație directă cu bicicletă confirmată în zona pilot pentru această zi.',
   noDirectDestinationsHint:
     'Poți încerca o altă dată sau căuta o rută anume în prima modalitate.',
+  chooseAnotherDate: 'Alege o altă dată',
+  searchSpecificRoute: 'Caută o rută anume',
   discoveryUnavailableTitle: 'Explorarea nu este disponibilă în acest pilot.',
   discoveryUnavailableBody:
     'Vom activa sugestiile numai după ce putem confirma destinațiile și retururile fără interogări nesigure către operator.',
@@ -104,7 +152,9 @@ export const ro = {
   noChanges: 'Fără schimbări',
   outboundDirect: 'Dus direct',
   returnDirect: 'Întors direct',
-  moreReturns: (count: number) => `și încă ${count} opțiuni de întoarcere`,
+  moreReturns: (count: number) => count === 1
+    ? '1 altă opțiune de întoarcere'
+    : `${count} alte opțiuni de întoarcere`,
   noReturnFound: 'Nicio întoarcere directă ulterioară găsită în datele verificate.',
   seeRoute: 'Vezi toate trenurile',
   openRoute: (from: string, to: string) => `Vezi ruta ${from} – ${to}`,

@@ -1,21 +1,31 @@
 import { ArrowDownUp, Bike, CalendarDays, Search } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import type { StationId, TrainSearchCriteria } from '../../domain/train.js'
-import { journeyDateBounds } from '../../domain/journey-date.js'
+import {
+  formatJourneyDate,
+  JOURNEY_DATE_WINDOW_DAYS,
+  journeyDateBounds,
+} from '../../domain/journey-date.js'
 import { ro } from '../../i18n/ro.js'
 import { StationCombobox } from './StationCombobox.js'
 
 interface SearchPanelProps {
+  hidden?: boolean
   criteria: TrainSearchCriteria
   loading: boolean
+  disabled?: boolean
+  disabledReason?: string
   onChange: (next: TrainSearchCriteria) => void
   onSearch: () => void
   onSwap: () => void
 }
 
 export function SearchPanel({
+  hidden = false,
   criteria,
   loading,
+  disabled = false,
+  disabledReason,
   onChange,
   onSearch,
   onSwap,
@@ -53,7 +63,7 @@ export function SearchPanel({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitted(true)
-    if (!stationValidity.from || !stationValidity.to) return
+    if (loading || dateBounds.catalogExpired || !stationValidity.from || !stationValidity.to) return
     onSearch()
   }
 
@@ -68,11 +78,12 @@ export function SearchPanel({
       id="route-search-panel"
       role="tabpanel"
       aria-labelledby="route-mode-tab"
+      hidden={hidden}
     >
       <div className="search-heading">
         <div>
-          <p className="eyebrow">{ro.fallbackRoute}</p>
-          <h1 id="journey-search-title">{ro.headline}</h1>
+          <p className="eyebrow">{ro.routeEyebrow}</p>
+          <h1 id="route-search-title">{ro.headline}</h1>
           <p>{ro.intro}</p>
         </div>
         <div className="bike-rule bike-rule-desktop">
@@ -118,17 +129,36 @@ export function SearchPanel({
               value={criteria.date}
               min={dateBounds.min}
               max={dateBounds.max}
+              disabled={dateBounds.catalogExpired}
+              aria-describedby="journey-date-hint"
               onChange={(event) => onChange({ ...criteria, date: event.target.value })}
               required
             />
           </div>
         </div>
 
-        <button className="search-button" type="submit" disabled={loading}>
+        <button
+          className="search-button"
+          type="submit"
+          disabled={loading || dateBounds.catalogExpired}
+          aria-describedby={`journey-date-hint${disabledReason ? ' route-action-reason' : ''}`}
+        >
           <Search size={19} aria-hidden="true" />
-          {ro.search}
+          {disabled ? ro.prepareOperatorSearch : ro.search}
         </button>
       </form>
+
+      {disabledReason ? (
+        <p id="route-action-reason" className="date-range-hint route-action-reason">
+          {disabledReason}
+        </p>
+      ) : null}
+
+      <p id="journey-date-hint" className="date-range-hint">
+        {dateBounds.catalogExpired
+          ? ro.catalogExpiredBody(formatJourneyDate(dateBounds.catalogValidUntil))
+          : ro.dateRangeHint(formatJourneyDate(dateBounds.max), JOURNEY_DATE_WINDOW_DAYS)}
+      </p>
 
       <div className="bike-locked">
         <span className="bike-locked-check" aria-hidden="true"><Bike size={18} /></span>

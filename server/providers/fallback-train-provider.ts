@@ -5,6 +5,7 @@ import type {
   TrainSearchCriteria,
 } from '../../src/domain/train.js'
 import { scheduledAt } from '../lib/date-time.js'
+import { FALLBACK_PROVIDER_WARNINGS } from '../lib/provider-warnings.js'
 import type {
   ProviderSearchResult,
   ProviderDestinationSearchResult,
@@ -61,7 +62,7 @@ export class FallbackTrainProvider implements TrainDataProvider {
       return {
         options: [], providerId: this.id, fetchedAt: new Date().toISOString(),
         outcome: 'unsupported',
-        warning: 'Datele demonstrative nu sunt disponibile în căutarea live.',
+        warning: FALLBACK_PROVIDER_WARNINGS.liveUnavailable,
       }
     }
     const options = fallbackSchedule
@@ -79,7 +80,7 @@ export class FallbackTrainProvider implements TrainDataProvider {
       fetchedAt: new Date().toISOString(),
       outcome: 'success',
       stale: true,
-      warning: 'Date demonstrative verificate la 3 septembrie 2026; nu reprezintă acoperire live.',
+      warning: FALLBACK_PROVIDER_WARNINGS.demoOnly,
     }
   }
 
@@ -112,7 +113,7 @@ export class FallbackTrainProvider implements TrainDataProvider {
       providerId: this.id,
       fetchedAt: new Date().toISOString(),
       outcome: 'unsupported',
-      warning: 'Explorarea destinațiilor nu este disponibilă pentru date demonstrative.',
+      warning: FALLBACK_PROVIDER_WARNINGS.discoveryUnavailable,
     }
   }
 
@@ -132,7 +133,7 @@ export class FallbackTrainProvider implements TrainDataProvider {
       bikeType: 'non_foldable',
       bikeReservation: 'unknown',
       bikeCapacity: null,
-      bikeFeeLei: 8,
+      bikeFeeLei: null,
       source: 'CFR Călători',
       sourceUrl: CFR_SOURCE_URL,
       lastVerifiedAt: FALLBACK_VERIFIED_ON,

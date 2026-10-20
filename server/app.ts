@@ -1,9 +1,12 @@
 import express from 'express'
 import { z } from 'zod'
-import { journeyDateBounds } from '../src/domain/journey-date.js'
+import { JOURNEY_DATE_WINDOW_DAYS, journeyDateBounds } from '../src/domain/journey-date.js'
 import { stations } from '../src/domain/stations.js'
 import type {
   DestinationSearchCriteria,
+  ProviderSourceInfo,
+  ProviderStatus,
+  TrainSearchSource,
   TrainSearchCriteria,
 } from '../src/domain/train.js'
 import { DestinationDiscoveryService } from './services/destination-discovery-service.js'
@@ -24,13 +27,13 @@ const stationIds = new Set(stations.map((station) => station.id))
 type Clock = () => Date
 
 function queryFields(clock: Clock) {
-  const { min, max } = journeyDateBounds(clock())
+  const bounds = journeyDateBounds(clock())
 
   return {
     from: z.string().refine((id) => stationIds.has(id), 'Stație necunoscută'),
     date: z.iso.date().refine(
-      (date) => date >= min && date <= max,
-      'Data trebuie să fie în următoarele 120 de zile și în perioada orarului publicat',
+      (date) => !bounds.catalogExpired && date >= bounds.min && date <= bounds.max,
+      `Data trebuie să se încadreze în fereastra de ${JOURNEY_DATE_WINDOW_DAYS} de zile, inclusiv ziua curentă, și în perioada orarului publicat`,
     ),
     bike: z.literal('true'),
   }
@@ -73,6 +76,12 @@ export interface CreateAppOptions {
   discoveryAvailable?: boolean
   /** Readiness additionally requires an approved, enabled provider. */
   providerReady?: boolean | (() => boolean)
+  /** Safe, public operator search links shown when live search cannot answer. */
+  providerLinks?: readonly {
+    providerId: string
+    sourceInfo: ProviderSourceInfo
+    buildSearchUrl?: (criteria: TrainSearchCriteria, now: Date) => string | undefined
+  }[]
   rateLimit?: RateLimitOptions
   logger?: ApiLogger
   /** Number of trusted reverse-proxy hops; disabled unless explicitly configured. */
@@ -81,15 +90,17 @@ export interface CreateAppOptions {
 
 function availabilityResponse(
   coverage: 'unsupported' | 'unavailable',
-  warning: string,
+  warning: string | null,
+  providerStatus: Exclude<ProviderStatus, 'ready'>,
+  sources: TrainSearchSource[] = [],
 ) {
   return {
     options: [],
     meta: {
-      providerId: 'pilot', reliability: 'official' as const,
+      providerId: 'pilot', reliability: null,
       fetchedAt: new Date().toISOString(), degraded: true,
       warning,
-      coverage, asOf: null, partial: false, sources: [],
+      coverage, providerStatus, asOf: null, partial: false, sources,
     },
   }
 }
@@ -113,6 +124,40 @@ export function createApp(
       return false
     }
   }
+  const providerLinkById = new Map(
+    (options.providerLinks ?? []).map((link) => [link.providerId, link] as const),
+  )
+  const providerSearchUrl = (
+    providerId: string,
+    criteria: TrainSearchCriteria,
+  ): string | undefined => {
+    const buildSearchUrl = providerLinkById.get(providerId)?.buildSearchUrl
+    if (!buildSearchUrl) return undefined
+
+    try {
+      const builtUrl = buildSearchUrl(criteria, clock())
+      if (!builtUrl) return undefined
+      const url = new URL(builtUrl)
+      return url.protocol === 'https:' && !url.username && !url.password
+        ? url.toString()
+        : undefined
+    } catch {
+      return undefined
+    }
+  }
+  const providerFallbackSources = (criteria: TrainSearchCriteria): TrainSearchSource[] => (
+    options.providerLinks ?? []
+  ).map(({ providerId, sourceInfo }) => {
+    const searchUrl = providerSearchUrl(providerId, criteria)
+    return {
+      providerId,
+      sourceInfo,
+      ...(searchUrl ? { searchUrl } : {}),
+      outcome: 'unavailable',
+      fetchedAt: null,
+      warning: null,
+    }
+  })
 
   app.disable('x-powered-by')
   if (options.trustProxy !== undefined) app.set('trust proxy', options.trustProxy)
@@ -134,7 +179,7 @@ export function createApp(
         allowlistVersion: pilot.allowlistVersion, verifiedAt: pilot.verifiedAt,
       },
       providers: {
-        journeySearch: journeySearchAvailable ? (providerReady ? 'ready' : 'disabled') : 'unavailable',
+        journeySearch: !journeySearchAvailable ? 'disabled' : providerReady ? 'ready' : 'unavailable',
         discovery: discoveryAvailable ? 'ready' : 'unsupported',
       },
     })
@@ -153,6 +198,11 @@ export function createApp(
     const providerReady = providerIsReady()
     const routeSupported = routeIsInPilot(pilot, parsed.data.from, parsed.data.to)
     const discoverySupported = discoveryAvailable && routeIsInPilot(pilot, parsed.data.from)
+    const routeProviderStatus: ProviderStatus = !routeSupported
+      ? 'unsupported'
+      : !journeySearchAvailable
+        ? 'disabled'
+        : providerReady ? 'ready' : 'unavailable'
     response.json({
       pilot: {
         region: pilot.region, mappingComplete: pilot.mappingComplete, source: pilot.source,
@@ -160,12 +210,10 @@ export function createApp(
       },
       route: {
         supported: routeSupported,
-        coverage: routeSupported
-          ? journeySearchAvailable && providerReady ? 'available' : 'unavailable'
-          : 'unsupported',
-        providerStatus: routeSupported && journeySearchAvailable && providerReady
-          ? 'ready'
-          : routeSupported ? 'disabled' : 'unsupported',
+        coverage: routeProviderStatus === 'ready'
+          ? 'available'
+          : routeProviderStatus === 'unsupported' ? 'unsupported' : 'unavailable',
+        providerStatus: routeProviderStatus,
       },
       discovery: {
         supported: discoverySupported,
@@ -188,28 +236,50 @@ export function createApp(
       return
     }
 
-    if (!routeIsInPilot(pilot, parsed.data.from, parsed.data.to)) {
+    const criteria = {
+      from: parsed.data.from,
+      to: parsed.data.to,
+      date: parsed.data.date,
+      bike: true,
+    } satisfies TrainSearchCriteria
+
+    if (!routeIsInPilot(pilot, criteria.from, criteria.to)) {
       response.json(availabilityResponse(
         'unsupported',
         'Traseul solicitat nu este acoperit de pilotul curent.',
+        'unsupported',
       ))
       return
     }
 
-    if (!journeySearchAvailable || !providerIsReady()) {
+    if (!journeySearchAvailable) {
       response.json(availabilityResponse(
         'unavailable',
-        'Sursa CFR nu este activă sau nu este pregătită.',
+        null,
+        'disabled',
+        providerFallbackSources(criteria),
+      ))
+      return
+    }
+
+    if (!providerIsReady()) {
+      response.json(availabilityResponse(
+        'unavailable',
+        'Căutarea live CFR nu este disponibilă momentan.',
+        'unavailable',
+        providerFallbackSources(criteria),
       ))
       return
     }
 
     try {
-      const result = await service.search({
-        ...parsed.data,
-        bike: true,
-      } as TrainSearchCriteria)
-      response.json(result)
+      const result = await service.search(criteria)
+      const sources = result.meta.sources?.map((source) => {
+        if (source.outcome === 'success') return source
+        const searchUrl = providerSearchUrl(source.providerId, criteria)
+        return searchUrl ? { ...source, searchUrl } : source
+      })
+      response.json(sources ? { ...result, meta: { ...result.meta, sources } } : result)
     } catch {
       response.status(503).json({
         error: 'providers_unavailable',
@@ -235,6 +305,7 @@ export function createApp(
       response.json(availabilityResponse(
         'unsupported',
         'Stația solicitată nu este acoperită de pilotul curent.',
+        'unsupported',
       ))
       return
     }
@@ -243,6 +314,7 @@ export function createApp(
       response.json(availabilityResponse(
         'unsupported',
         'Explorarea destinațiilor nu este disponibilă în pilotul curent.',
+        'unsupported',
       ))
       return
     }
@@ -253,7 +325,10 @@ export function createApp(
         bike: true,
         direct: true,
       } as DestinationSearchCriteria)
-      response.json(result)
+      const options = result.options.filter((option) =>
+        routeIsInPilot(pilot, parsed.data.from, option.destinationStationId),
+      )
+      response.json(options.length === result.options.length ? result : { ...result, options })
     } catch {
       response.status(503).json({
         error: 'providers_unavailable',

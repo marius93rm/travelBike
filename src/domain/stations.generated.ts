@@ -1375,8 +1375,10 @@ export const generatedStations: Station[] = [
   station("cfr-60517", "Zorleni Hm.", "Zorleni Hm."),
 ]
 
+// Source resource: https://data.gov.ro/dataset/c4f71dbb-de39-49b2-b697-5b60a5f299a2/resource/0f67143e-bb88-4a06-8e7a-b35b1eb91329/download/trenuri-2025-2026_sntfc.xml.
 export const generatedStationCatalogValidity = {
   "exportedAt": "2025-12-03",
   "validFrom": "2025-12-14",
-  "validUntil": "2026-12-12"
+  "validUntil": "2026-12-12",
+  "sourceResourceUrl": "https://data.gov.ro/dataset/c4f71dbb-de39-49b2-b697-5b60a5f299a2/resource/0f67143e-bb88-4a06-8e7a-b35b1eb91329/download/trenuri-2025-2026_sntfc.xml"
 } as const

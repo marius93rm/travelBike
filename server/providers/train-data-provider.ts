@@ -1,6 +1,7 @@
 import type {
   DestinationSearchCriteria,
   DirectDestinationOption,
+  ProviderSourceInfo,
   TrainOption,
   TrainSearchCriteria,
   ProviderOutcome,
@@ -9,8 +10,12 @@ import type {
 export interface ProviderSearchResult {
   options: TrainOption[]
   providerId: string
+  sourceInfo?: ProviderSourceInfo
   fetchedAt: string
+  /** True when this answer was served from the provider cache. */
+  cached?: boolean
   stale?: boolean
+  /** Safe user-facing text only; never include exception, request, or credential details. */
   warning?: string
   /** Omitted by legacy adapters and interpreted as a successful, authoritative answer. */
   outcome?: ProviderOutcome
@@ -24,6 +29,7 @@ export interface ProviderCapabilities {
 
 export interface TrainDataProvider {
   readonly id: string
+  readonly sourceInfo?: ProviderSourceInfo
   readonly capabilities?: Partial<ProviderCapabilities>
   /** Fast local readiness only; it must never perform an upstream request. */
   isReady?(): boolean
@@ -36,8 +42,12 @@ export interface TrainDataProvider {
 export interface ProviderDestinationSearchResult {
   options: DirectDestinationOption[]
   providerId: string
+  sourceInfo?: ProviderSourceInfo
   fetchedAt: string
+  /** True when this answer was served from the provider cache. */
+  cached?: boolean
   stale?: boolean
+  /** Safe user-facing text only; never include exception, request, or credential details. */
   warning?: string
   outcome?: ProviderOutcome
   retryAfterSeconds?: number

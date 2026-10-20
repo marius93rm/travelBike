@@ -3,6 +3,10 @@ import type {
   ProviderSearchResult,
   TrainDataProvider,
 } from './train-data-provider.js'
+import {
+  CONTROLLED_PROVIDER_WARNINGS,
+  PROVIDER_FAILURE_WARNING,
+} from '../lib/provider-warnings.js'
 
 export interface ControlledTrainProviderOptions {
   maxConcurrent?: number
@@ -22,6 +26,7 @@ export interface ControlledTrainProviderOptions {
 export class ControlledTrainProvider implements TrainDataProvider {
   readonly id: string
   readonly capabilities: TrainDataProvider['capabilities']
+  readonly sourceInfo: TrainDataProvider['sourceInfo']
   private readonly maxConcurrent: number
   private readonly maxQueue: number
   private readonly maxRequests: number
@@ -43,6 +48,7 @@ export class ControlledTrainProvider implements TrainDataProvider {
   ) {
     this.id = `controlled:${provider.id}`
     this.capabilities = provider.capabilities
+    this.sourceInfo = provider.sourceInfo
     this.maxConcurrent = Math.max(1, options.maxConcurrent ?? 2)
     this.maxQueue = Math.max(0, options.maxQueue ?? 20)
     this.maxRequests = Math.max(1, options.maxRequests ?? 30)
@@ -87,7 +93,7 @@ export class ControlledTrainProvider implements TrainDataProvider {
         durationMs: this.clock() - startedAt,
       })
       return result
-    } catch (error) {
+    } catch {
       this.recordFailure('unavailable')
       this.options.onEvent?.({
         event: 'provider_request',
@@ -100,7 +106,7 @@ export class ControlledTrainProvider implements TrainDataProvider {
         providerId: this.provider.id,
         fetchedAt: new Date(this.clock()).toISOString(),
         outcome: 'unavailable',
-        warning: error instanceof Error ? error.message : 'provider failed',
+        warning: PROVIDER_FAILURE_WARNING,
       }
     } finally {
       release()
@@ -156,8 +162,8 @@ export class ControlledTrainProvider implements TrainDataProvider {
       outcome,
       retryAfterSeconds,
       warning: outcome === 'rate_limited'
-        ? 'Bugetul de cereri către CFR a fost epuizat temporar.'
-        : 'Circuitul CFR este deschis după erori repetate.',
+        ? CONTROLLED_PROVIDER_WARNINGS.rateLimited
+        : CONTROLLED_PROVIDER_WARNINGS.circuitOpen,
     }
   }
 

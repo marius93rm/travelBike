@@ -1,11 +1,17 @@
-import { AlertTriangle, Bike, CheckCircle2, Compass, Info, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Bike, CalendarDays, CheckCircle2, Compass, Info, RefreshCw, Search } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { fetchCoverage, fetchDestinations, fetchTrains } from '../data/train-api.js'
-import { journeyDateBounds } from '../domain/journey-date.js'
+import {
+  formatJourneyDate,
+  journeyDateBounds,
+  millisecondsUntilNextRomaniaMidnight,
+} from '../domain/journey-date.js'
+import { stationCatalogMeta, stationsById } from '../domain/stations.js'
 import type {
   DestinationSearchCriteria,
   DestinationSearchResponse,
   StationId,
+  TrainSearchMeta,
   TrainSearchCriteria,
   TrainSearchResponse,
 } from '../domain/train.js'
@@ -16,82 +22,198 @@ import { DestinationSearchPanel } from './components/DestinationSearchPanel.js'
 import { RouteLine } from './components/RouteLine.js'
 import { SearchModeTabs, type SearchMode } from './components/SearchModeTabs.js'
 import { SearchPanel } from './components/SearchPanel.js'
+import { SearchCriteriaSummary } from './components/SearchCriteriaSummary.js'
+import { SearchFreshness } from './components/SearchFreshness.js'
+import { SearchSourceAttribution } from './components/SearchSourceAttribution.js'
+import { ProviderSearchLinks } from './components/ProviderSearchLinks.js'
 import { TrainCard } from './components/TrainCard.js'
 
-const initialCriteria: TrainSearchCriteria = {
-  from: 'codlea',
-  to: 'brasov',
-  date: journeyDateBounds().min,
-  bike: true,
+function createInitialCriteria(date: string): TrainSearchCriteria {
+  return { from: 'codlea', to: 'brasov', date, bike: true }
 }
 
-const initialDestinationCriteria: DestinationSearchCriteria = {
-  from: 'brasov',
-  date: journeyDateBounds().min,
-  bike: true,
-  direct: true,
+function createInitialDestinationCriteria(date: string): DestinationSearchCriteria {
+  return { from: 'brasov', date, bike: true, direct: true }
+}
+
+function sourceReliabilityLabel(meta: TrainSearchMeta) {
+  if (meta.reliability === 'fallback') return ro.fallbackVerified
+  if (meta.reliability) return ro.officialSource
+  return ro.sourceReliabilityUnknown
+}
+
+function freshnessLabel(meta: TrainSearchMeta) {
+  if (meta.cacheStatus === 'live') return ro.liveSourceResponse
+  if (meta.cacheStatus === 'cached') return ro.cachedData
+  if (meta.cacheStatus === 'mixed') return ro.mixedDataSources
+  return ro.freshnessStateUnknown
+}
+
+function freshnessNotice(meta: TrainSearchMeta) {
+  if (meta.cacheStatus === 'cached') return ro.announcedCached
+  if (meta.cacheStatus === 'mixed') return ro.announcedMixedCache
+  if (meta.cacheStatus === undefined) return ro.announcedCacheUnknown
+  return ''
+}
+
+function SearchDataStatus({ meta }: { meta: TrainSearchMeta }) {
+  return (
+    <>
+      <span className={`data-state ${meta.reliability ?? 'unknown'}`}>
+        {meta.reliability === 'official' || meta.reliability === 'open_data'
+          ? <CheckCircle2 size={16} aria-hidden="true" />
+          : <Info size={16} aria-hidden="true" />}
+        {sourceReliabilityLabel(meta)}
+      </span>
+      <span className={`data-state cache-${meta.cacheStatus ?? 'unknown'}`}>
+        {meta.cacheStatus === 'live'
+          ? <CheckCircle2 size={16} aria-hidden="true" />
+          : <Info size={16} aria-hidden="true" />}
+        {freshnessLabel(meta)}
+      </span>
+    </>
+  )
 }
 
 export function App() {
+  const [now, setNow] = useState(() => new Date())
+  const dateBounds = journeyDateBounds(now)
+  const catalogExpired = dateBounds.catalogExpired
+  const catalogExpiredMessage = ro.catalogExpiredBody(
+    formatJourneyDate(dateBounds.catalogValidUntil),
+  )
   const [mode, setMode] = useState<SearchMode>('route')
-  const [draft, setDraft] = useState(initialCriteria)
-  const [query, setQuery] = useState(initialCriteria)
+  const [draft, setDraft] = useState(() => createInitialCriteria(dateBounds.min))
+  const [query, setQuery] = useState(() => createInitialCriteria(dateBounds.min))
   const [data, setData] = useState<TrainSearchResponse | null>(null)
-  const [loading, setLoading] = useState(true)
+  const routeDisabled = data?.meta.providerStatus === 'disabled'
+  const [loading, setLoading] = useState(!catalogExpired)
   const [error, setError] = useState(false)
-  const [destinationDraft, setDestinationDraft] = useState(initialDestinationCriteria)
+  const [destinationDraft, setDestinationDraft] = useState(
+    () => createInitialDestinationCriteria(dateBounds.min),
+  )
   const [destinationQuery, setDestinationQuery] = useState<DestinationSearchCriteria | null>(null)
+  const destinationQueryDate = destinationQuery?.date
   const [destinationData, setDestinationData] = useState<DestinationSearchResponse | null>(null)
   const [destinationLoading, setDestinationLoading] = useState(false)
   const [destinationError, setDestinationError] = useState(false)
   const [discoveryCapability, setDiscoveryCapability] = useState<
     'unknown' | 'checking' | 'available' | 'unsupported' | 'unavailable'
   >('unknown')
+  const [discoveryCapabilityAttempt, setDiscoveryCapabilityAttempt] = useState(0)
+  const discoveryDateRef = useRef<HTMLInputElement>(null)
   const resultsTitleRef = useRef<HTMLHeadingElement>(null)
   const destinationResultsTitleRef = useRef<HTMLHeadingElement>(null)
+  const mainRef = useRef<HTMLElement>(null)
   const focusResultsAfterSearch = useRef(false)
   const focusDestinationsAfterSearch = useRef(false)
+  const focusRouteDestinationAfterModeChange = useRef(false)
+  const trainSearchSequence = useRef(0)
+  const destinationSearchSequence = useRef(0)
+  const discoveryCapabilitySequence = useRef(0)
+  const discoveryDraftTouched = useRef(false)
 
   useEffect(() => {
+    const timeout = window.setTimeout(
+      () => {
+        const nextNow = new Date()
+        const nextBounds = journeyDateBounds(nextNow)
+        setNow(nextNow)
+        if (nextBounds.catalogExpired) return
+
+        setDraft((current) => current.date < nextBounds.min
+          ? { ...current, date: nextBounds.min }
+          : current)
+        setDestinationDraft((current) => current.date < nextBounds.min
+          ? { ...current, date: nextBounds.min }
+          : current)
+
+        if (query.date < nextBounds.min) {
+          setLoading(true)
+          setError(false)
+          setQuery((current) => current.date < nextBounds.min
+            ? { ...current, date: nextBounds.min }
+            : current)
+        }
+
+        if (destinationQueryDate && destinationQueryDate < nextBounds.min) {
+          setDestinationLoading(true)
+          setDestinationError(false)
+          setDestinationQuery((current) => current && current.date < nextBounds.min
+            ? { ...current, date: nextBounds.min }
+            : current)
+        }
+      },
+      millisecondsUntilNextRomaniaMidnight(now),
+    )
+    return () => window.clearTimeout(timeout)
+  }, [now, query.date, destinationQueryDate])
+
+  useEffect(() => {
+    if (catalogExpired) return
     const controller = new AbortController()
+    const requestSequence = trainSearchSequence.current
+    let active = true
 
     fetchTrains(query, controller.signal)
-      .then((response) => setData(response))
+      .then((response) => {
+        if (active && requestSequence === trainSearchSequence.current) setData(response)
+      })
       .catch((requestError: unknown) => {
+        if (!active || requestSequence !== trainSearchSequence.current) return
         if (requestError instanceof DOMException && requestError.name === 'AbortError') return
         setError(true)
         setData(null)
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
+        if (active && requestSequence === trainSearchSequence.current) setLoading(false)
       })
 
-    return () => controller.abort()
-  }, [query])
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [query, catalogExpired])
 
   useEffect(() => {
+    if (catalogExpired) return
     if (!destinationQuery) return
     const controller = new AbortController()
+    const requestSequence = destinationSearchSequence.current
+    let active = true
 
     fetchDestinations(destinationQuery, controller.signal)
-      .then((response) => setDestinationData(response))
+      .then((response) => {
+        if (active && requestSequence === destinationSearchSequence.current) {
+          setDestinationData(response)
+        }
+      })
       .catch((requestError: unknown) => {
+        if (!active || requestSequence !== destinationSearchSequence.current) return
         if (requestError instanceof DOMException && requestError.name === 'AbortError') return
         setDestinationError(true)
         setDestinationData(null)
       })
       .finally(() => {
-        if (!controller.signal.aborted) setDestinationLoading(false)
+        if (active && requestSequence === destinationSearchSequence.current) {
+          setDestinationLoading(false)
+        }
       })
 
-    return () => controller.abort()
-  }, [destinationQuery])
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [destinationQuery, catalogExpired])
 
   useEffect(() => {
-    if (mode !== 'discover') return
+    if (catalogExpired || mode !== 'discover') return
     const controller = new AbortController()
+    const requestSequence = discoveryCapabilitySequence.current
+    let active = true
     fetchCoverage(destinationDraft, controller.signal)
       .then((coverage) => {
+        if (!active || requestSequence !== discoveryCapabilitySequence.current) return
         if (coverage.discovery.coverage === 'available') {
           setDiscoveryCapability('available')
         } else if (coverage.discovery.coverage === 'unsupported') {
@@ -101,11 +223,15 @@ export function App() {
         }
       })
       .catch((requestError: unknown) => {
+        if (!active || requestSequence !== discoveryCapabilitySequence.current) return
         if (requestError instanceof DOMException && requestError.name === 'AbortError') return
         setDiscoveryCapability('unavailable')
       })
-    return () => controller.abort()
-  }, [destinationDraft, mode])
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [destinationDraft, mode, catalogExpired, discoveryCapabilityAttempt])
 
   useEffect(() => {
     if (!loading && focusResultsAfterSearch.current) {
@@ -121,7 +247,15 @@ export function App() {
     }
   }, [destinationLoading])
 
+  useEffect(() => {
+    if (mode !== 'route' || !focusRouteDestinationAfterModeChange.current) return
+    focusRouteDestinationAfterModeChange.current = false
+    document.getElementById('to-station')?.focus()
+  }, [mode])
+
   function runSearch(next: TrainSearchCriteria) {
+    if (catalogExpired) return
+    trainSearchSequence.current += 1
     focusResultsAfterSearch.current = true
     setLoading(true)
     setError(false)
@@ -129,7 +263,9 @@ export function App() {
   }
 
   function runDestinationSearch(next: DestinationSearchCriteria) {
-    if (discoveryCapability !== 'available') return
+    if (catalogExpired || discoveryCapability !== 'available') return
+    discoveryDraftTouched.current = true
+    destinationSearchSequence.current += 1
     focusDestinationsAfterSearch.current = true
     setDestinationLoading(true)
     setDestinationError(false)
@@ -137,16 +273,39 @@ export function App() {
   }
 
   function changeMode(nextMode: SearchMode) {
-    if (nextMode === 'discover') setDiscoveryCapability('checking')
+    discoveryCapabilitySequence.current += 1
+    if (nextMode === 'discover' && !catalogExpired) {
+      setDiscoveryCapability('checking')
+      if (!discoveryDraftTouched.current) {
+        setDestinationDraft((current) => ({ ...current, from: draft.from, date: draft.date }))
+      }
+    }
     setMode(nextMode)
   }
 
   function updateDestinationDraft(next: DestinationSearchCriteria) {
+    discoveryCapabilitySequence.current += 1
+    discoveryDraftTouched.current = true
+    if (next.from !== destinationDraft.from || next.date !== destinationDraft.date) {
+      destinationSearchSequence.current += 1
+      focusDestinationsAfterSearch.current = false
+      setDestinationQuery(null)
+      setDestinationData(null)
+      setDestinationLoading(false)
+      setDestinationError(false)
+    }
     setDestinationDraft(next)
-    if (mode === 'discover') setDiscoveryCapability('checking')
+    if (mode === 'discover' && !catalogExpired) setDiscoveryCapability('checking')
+  }
+
+  function retryDiscoveryCapability() {
+    discoveryCapabilitySequence.current += 1
+    setDiscoveryCapability('checking')
+    setDiscoveryCapabilityAttempt((attempt) => attempt + 1)
   }
 
   function openDiscoveredRoute(destinationId: StationId) {
+    discoveryCapabilitySequence.current += 1
     const source = destinationQuery ?? destinationDraft
     const next: TrainSearchCriteria = {
       from: source.from,
@@ -159,6 +318,20 @@ export function App() {
     runSearch(next)
   }
 
+  function openSpecificRouteSearch() {
+    const source = destinationQuery ?? destinationDraft
+    const next: TrainSearchCriteria = {
+      ...draft,
+      from: source.from,
+      to: draft.to === source.from ? draft.from : draft.to,
+      date: source.date,
+      bike: true,
+    }
+    focusRouteDestinationAfterModeChange.current = true
+    setDraft(next)
+    changeMode('route')
+  }
+
   function swapDirection() {
     const next = { ...draft, from: draft.to, to: draft.from }
     setDraft(next)
@@ -166,42 +339,99 @@ export function App() {
   }
 
   function resultsAnnouncement() {
+    if (catalogExpired) return `${ro.catalogExpiredTitle} ${catalogExpiredMessage}`
     if (loading) return ro.loading
     if (error) return ro.errorTitle
+    if (data?.meta.providerStatus === 'disabled') {
+      const hasOperatorSearchLink = data.meta.sources?.some((source) => (
+        source.outcome !== 'success' && Boolean(source.searchUrl && source.sourceInfo)
+      ))
+      const fromName = stationsById.get(query.from)?.name ?? query.from
+      const toName = stationsById.get(query.to)?.name ?? query.to
+      const linkAnnouncement = hasOperatorSearchLink
+        ? ro.operatorSearchLinkReady(fromName, toName, formatJourneyDate(query.date))
+        : undefined
+      return [linkAnnouncement, ro.liveSearchDisabledTitle, ro.liveSearchDisabledBody]
+        .filter(Boolean)
+        .join(' ')
+    }
 
     if (data?.meta.coverage === 'unsupported') return ro.coverageUnsupportedTitle
     if (data?.meta.coverage && data.meta.coverage !== 'covered') {
       return ro.coverageUnavailableTitle
     }
-
-    const count = ro.resultsCount(data?.options.length ?? 0)
-    if (data?.meta.warning) return `${count} ${data.meta.warning}`
-    if (data?.meta.reliability === 'fallback') return `${count} ${ro.announcedFallback}`
-    if (data?.meta.degraded) return `${count} ${ro.announcedCached}`
-    return count
+    const summary = data && data.options.length === 0
+      ? ro.empty
+      : ro.resultsCount(data?.options.length ?? 0)
+    const notice = data ? freshnessNotice(data.meta) : ''
+    if (data?.meta.warning) return [summary, data.meta.warning, notice].filter(Boolean).join(' ')
+    if (data?.meta.reliability === 'fallback') {
+      return [summary, ro.announcedFallback, notice].filter(Boolean).join(' ')
+    }
+    if (notice) return `${summary} ${notice}`
+    return summary
   }
 
   function destinationAnnouncement() {
+    if (catalogExpired) return `${ro.catalogExpiredTitle} ${catalogExpiredMessage}`
     if (destinationLoading) return ro.loadingDestinations
     if (destinationError) return ro.destinationErrorTitle
-    if (!destinationData) return ro.destinationStartBody
+    if (!destinationData) {
+      if (discoveryCapability === 'checking') return ro.loadingDestinations
+      if (discoveryCapability === 'unsupported') return ro.discoveryUnavailableTitle
+      if (discoveryCapability === 'unavailable') return ro.coverageUnavailableTitle
+      return ro.destinationStartBody
+    }
     if (destinationData.meta.coverage === 'unsupported') return ro.discoveryUnavailableTitle
     if (destinationData.meta.coverage && destinationData.meta.coverage !== 'covered') {
       return ro.coverageUnavailableTitle
     }
-    return ro.destinationCount(destinationData.options.length)
+    const summary = destinationData.options.length === 0
+      ? `${ro.noDirectDestinations} ${ro.noDirectDestinationsHint}`
+      : ro.destinationCount(destinationData.options.length)
+    const notice = freshnessNotice(destinationData.meta)
+    if (destinationData.meta.warning) {
+      return [summary, destinationData.meta.warning, notice].filter(Boolean).join(' ')
+    }
+    if (destinationData.meta.reliability === 'fallback') {
+      return [summary, ro.announcedFallback, notice].filter(Boolean).join(' ')
+    }
+    if (notice) return `${summary} ${notice}`
+    return summary
   }
 
   const routeCoverage = data?.meta.coverage ?? 'covered'
   const routeUnsupported = routeCoverage === 'unsupported'
-  const routeUnavailable = routeCoverage !== 'covered' && !routeUnsupported
+  const routeUnavailable = routeCoverage !== 'covered' && !routeUnsupported && !routeDisabled
   const destinationCoverage = destinationData?.meta.coverage ?? 'covered'
   const destinationUnsupported = destinationCoverage === 'unsupported'
   const destinationUnavailable = destinationCoverage !== 'covered' && !destinationUnsupported
+  const discoveryActionReason = catalogExpired
+    ? undefined
+    : destinationLoading || discoveryCapability === 'checking'
+      ? ro.loadingDestinations
+      : discoveryCapability === 'unsupported'
+        ? ro.discoveryUnavailableTitle
+        : discoveryCapability === 'unavailable'
+          ? ro.coverageUnavailableTitle
+          : undefined
+  const routeActionReason = catalogExpired
+    ? undefined
+    : loading
+      ? ro.loading
+      : routeDisabled
+        ? ro.liveSearchDisabledBody
+        : undefined
 
   return (
     <div className="app-frame">
-      <a className="skip-link" href="#main">{ro.skipToContent}</a>
+      <a
+        className="skip-link"
+        href="#main"
+        onClick={() => mainRef.current?.focus()}
+      >
+        {ro.skipToContent}
+      </a>
       <header className="site-header">
         <div className="header-inner">
           <a href="#main" className="brand" aria-label={`${ro.brand} — ${ro.homeLabel}`}>
@@ -215,26 +445,38 @@ export function App() {
         </div>
       </header>
 
-      <main id="main">
+      <main id="main" ref={mainRef} tabIndex={-1}>
+        {dateBounds.catalogExpiringSoon && !catalogExpired ? (
+          <div className="source-warning catalog-expiry-warning" role="note">
+            <AlertTriangle size={18} aria-hidden="true" />
+            <p>
+              <strong>{ro.catalogExpiringSoonTitle}</strong>{' '}
+              {ro.catalogExpiringSoonBody(formatJourneyDate(dateBounds.catalogValidUntil))}
+            </p>
+          </div>
+        ) : null}
         <section className="search-shell" aria-label={ro.searchModesLabel}>
           <SearchModeTabs activeMode={mode} onChange={changeMode} />
-          {mode === 'route' ? (
-            <SearchPanel
-              criteria={draft}
-              loading={loading}
-              onChange={setDraft}
-              onSearch={() => runSearch({ ...draft })}
-              onSwap={swapDirection}
-            />
-          ) : (
-            <DestinationSearchPanel
-              criteria={destinationDraft}
-              loading={destinationLoading}
-              disabled={discoveryCapability !== 'available'}
-              onChange={updateDestinationDraft}
-              onSearch={() => runDestinationSearch({ ...destinationDraft })}
-            />
-          )}
+          <SearchPanel
+            hidden={mode !== 'route'}
+            criteria={draft}
+            loading={loading}
+            disabled={routeDisabled}
+            disabledReason={routeActionReason}
+            onChange={setDraft}
+            onSearch={() => runSearch({ ...draft })}
+            onSwap={swapDirection}
+          />
+          <DestinationSearchPanel
+            hidden={mode !== 'discover'}
+            criteria={destinationDraft}
+            dateInputRef={discoveryDateRef}
+            loading={destinationLoading}
+            disabled={discoveryCapability !== 'available'}
+            disabledReason={discoveryActionReason}
+            onChange={updateDestinationDraft}
+            onSearch={() => runDestinationSearch({ ...destinationDraft })}
+          />
         </section>
 
         {mode === 'route' ? (
@@ -245,26 +487,39 @@ export function App() {
               {resultsAnnouncement()}
             </p>
 
-            <section className="results-section" aria-labelledby="results-title" aria-busy={loading}>
+            <section
+              className="results-section"
+              aria-labelledby="results-title"
+              aria-busy={loading && !catalogExpired}
+            >
           <div className="results-heading">
             <div>
               <p className="eyebrow">{ro.compatibleResults}</p>
               <h2 id="results-title" ref={resultsTitleRef} tabIndex={-1}>{ro.resultsTitle}</h2>
               <p>{ro.resultsHint}</p>
+              <SearchCriteriaSummary from={query.from} to={query.to} date={query.date} />
             </div>
-            {data && routeCoverage === 'covered' ? (
-              <span className={`data-state ${data.meta.reliability}`}>
-                {data.meta.reliability === 'fallback' ? <Info size={16} /> : <CheckCircle2 size={16} />}
-                {data.meta.reliability === 'fallback'
-                  ? ro.fallbackVerified
-                  : data.meta.degraded
-                    ? ro.cachedOfficialData
-                    : ro.currentOfficialData}
-              </span>
+            {data && !catalogExpired && !loading && routeCoverage === 'covered'
+              && (data.meta.reliability != null || data.meta.asOf) ? (
+              <div className="results-data-meta">
+                <SearchDataStatus meta={data.meta} />
+                {data.options.length === 0 ? (
+                  <SearchSourceAttribution sources={data.meta.sources} />
+                ) : null}
+                <SearchFreshness asOf={data.meta.asOf} />
+              </div>
             ) : null}
           </div>
 
-          {data?.meta.warning ? (
+          {catalogExpired ? (
+            <div className="state-panel coverage-state">
+              <AlertTriangle size={28} aria-hidden="true" />
+              <h3>{ro.catalogExpiredTitle}</h3>
+              <p>{catalogExpiredMessage}</p>
+            </div>
+          ) : (
+            <>
+          {!loading && !routeDisabled && !routeUnsupported && data?.meta.warning ? (
             <div className="source-warning">
               <AlertTriangle size={18} aria-hidden="true" />
               <span>{data.meta.warning}</span>
@@ -297,6 +552,15 @@ export function App() {
             </div>
           ) : null}
 
+          {!loading && !error && routeDisabled ? (
+            <div className="state-panel coverage-state">
+              <Info size={28} aria-hidden="true" />
+              <h3>{ro.liveSearchDisabledTitle}</h3>
+              <p>{ro.liveSearchDisabledBody}</p>
+              <ProviderSearchLinks sources={data?.meta.sources} />
+            </div>
+          ) : null}
+
           {!loading && !error && routeUnavailable ? (
             <div className="state-panel coverage-state">
               <AlertTriangle size={28} aria-hidden="true" />
@@ -305,6 +569,7 @@ export function App() {
               <button type="button" className="secondary-button" onClick={() => runSearch({ ...query })}>
                 <RefreshCw size={17} />{ro.retry}
               </button>
+              <ProviderSearchLinks sources={data?.meta.sources} />
             </div>
           ) : null}
 
@@ -318,6 +583,8 @@ export function App() {
           {!loading && !error && routeCoverage === 'covered' && data?.options.map((train) => (
             <TrainCard train={train} key={train.id} />
           ))}
+            </>
+          )}
             </section>
           </>
         ) : (
@@ -325,7 +592,11 @@ export function App() {
           <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
             {destinationAnnouncement()}
           </p>
-          <section className="results-section destination-results" aria-labelledby="destination-results-title" aria-busy={destinationLoading}>
+          <section
+            className="results-section destination-results"
+            aria-labelledby="destination-results-title"
+            aria-busy={destinationLoading && !catalogExpired}
+          >
             <div className="results-heading">
               <div>
                 <p className="eyebrow">{ro.directIdeas}</p>
@@ -337,20 +608,35 @@ export function App() {
                   {ro.destinationResultsTitle}
                 </h2>
                 <p>{ro.destinationResultsHint}</p>
+                {destinationQuery && !catalogExpired ? (
+                  <SearchCriteriaSummary
+                    from={destinationQuery.from}
+                    date={destinationQuery.date}
+                  />
+                ) : null}
               </div>
-              {destinationData && destinationCoverage === 'covered' ? (
-                <span className={`data-state ${destinationData.meta.reliability}`}>
-                  {destinationData.meta.reliability === 'fallback' ? <Info size={16} /> : <CheckCircle2 size={16} />}
-                  {destinationData.meta.reliability === 'fallback'
-                    ? ro.fallbackVerified
-                    : destinationData.meta.degraded
-                      ? ro.cachedOfficialData
-                      : ro.currentOfficialData}
-                </span>
+              {destinationData && !catalogExpired && !destinationLoading
+                && destinationCoverage === 'covered'
+                && (destinationData.meta.reliability != null || destinationData.meta.asOf) ? (
+                <div className="results-data-meta">
+                  <SearchDataStatus meta={destinationData.meta} />
+                  {destinationData.options.length === 0 ? (
+                    <SearchSourceAttribution sources={destinationData.meta.sources} />
+                  ) : null}
+                  <SearchFreshness asOf={destinationData.meta.asOf} />
+                </div>
               ) : null}
             </div>
 
-            {destinationData?.meta.warning ? (
+            {catalogExpired ? (
+              <div className="state-panel coverage-state">
+                <AlertTriangle size={28} aria-hidden="true" />
+                <h3>{ro.catalogExpiredTitle}</h3>
+                <p>{catalogExpiredMessage}</p>
+              </div>
+            ) : (
+              <>
+            {!destinationLoading && !destinationUnsupported && destinationData?.meta.warning ? (
               <div className="source-warning">
                 <AlertTriangle size={18} aria-hidden="true" />
                 <span>{destinationData.meta.warning}</span>
@@ -385,6 +671,13 @@ export function App() {
                 <AlertTriangle size={28} aria-hidden="true" />
                 <h3>{ro.coverageUnavailableTitle}</h3>
                 <p>{ro.coverageUnavailableBody}</p>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={retryDiscoveryCapability}
+                >
+                  <RefreshCw size={17} />{ro.retry}
+                </button>
               </div>
             ) : null}
 
@@ -423,6 +716,13 @@ export function App() {
                 <AlertTriangle size={28} aria-hidden="true" />
                 <h3>{ro.coverageUnavailableTitle}</h3>
                 <p>{ro.coverageUnavailableBody}</p>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => runDestinationSearch({ ...(destinationQuery ?? destinationDraft) })}
+                >
+                  <RefreshCw size={17} />{ro.retry}
+                </button>
               </div>
             ) : null}
 
@@ -431,6 +731,17 @@ export function App() {
                 <Bike size={30} aria-hidden="true" />
                 <h3>{ro.noDirectDestinations}</h3>
                 <p>{ro.noDirectDestinationsHint}</p>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={catalogExpired}
+                  onClick={() => discoveryDateRef.current?.focus()}
+                >
+                  <CalendarDays size={17} aria-hidden="true" />{ro.chooseAnotherDate}
+                </button>
+                <button type="button" className="secondary-button" onClick={openSpecificRouteSearch}>
+                  <Search size={17} aria-hidden="true" />{ro.searchSpecificRoute}
+                </button>
               </div>
             ) : null}
 
@@ -442,6 +753,8 @@ export function App() {
                 onOpenRoute={openDiscoveredRoute}
               />
             ))}
+              </>
+            )}
           </section>
           </>
         )}
@@ -462,6 +775,14 @@ export function App() {
           <BrandMark />
           <p><strong>{ro.brand}</strong><br />{ro.independentTool}</p>
         </div>
+        <p className="catalog-attribution">
+          {ro.stationCatalogLabel}{' '}
+          <a href={stationCatalogMeta.sourceUrl}>{ro.stationCatalogSource}</a>
+          {' · '}{ro.stationCatalogExportDate(formatJourneyDate(stationCatalogMeta.exportedAt))}
+          {' · '}{ro.stationCatalogValidUntil(formatJourneyDate(stationCatalogMeta.validUntil))}
+          {' · '}{ro.stationCatalogLicenseLead}{' '}
+          <a href={ro.stationCatalogLicenseUrl}>{ro.stationCatalogLicense}</a>.
+        </p>
         <p>{ro.ticketDisclaimer}</p>
       </footer>
     </div>

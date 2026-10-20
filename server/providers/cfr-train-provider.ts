@@ -1,7 +1,9 @@
-import type { TrainSearchCriteria } from '../../src/domain/train.js'
+import type { ProviderSourceInfo, TrainSearchCriteria } from '../../src/domain/train.js'
 import { load } from 'cheerio'
 import { stationsById } from '../../src/domain/stations.js'
+import { CFR_FAILURE_WARNINGS } from '../lib/provider-warnings.js'
 import { parseCfrJourneyHtml } from './cfr-journey-parser.js'
+import { buildCfrBookingUrl } from './cfr-booking-url.js'
 import type {
   ProviderSearchResult,
   TrainDataProvider,
@@ -9,6 +11,17 @@ import type {
 
 const DEFAULT_ENDPOINT = 'https://bilete.cfrcalatori.ro/ro-RO/Itineraries'
 const DEFAULT_PUBLIC_SOURCE_URL = 'https://bilete.cfrcalatori.ro/ro-RO/Itineraries'
+
+/** Public route for users to check journeys directly while this provider is unavailable. */
+export const CFR_PUBLIC_PROVIDER_LINK = {
+  providerId: 'cfr',
+  sourceInfo: {
+    name: 'CFR Călători',
+    url: DEFAULT_PUBLIC_SOURCE_URL,
+  },
+  buildSearchUrl: (criteria: TrainSearchCriteria, now: Date) =>
+    buildCfrPublicSearchUrl(criteria, DEFAULT_PUBLIC_SOURCE_URL, now),
+} as const
 
 // The current CFR planner uses public commercial labels, which differ from
 // the operational labels retained in the timetable catalog. This map is
@@ -179,6 +192,7 @@ export interface CfrTrainProviderOptions {
 export class CfrTrainProvider implements TrainDataProvider {
   readonly id = 'cfr'
   readonly capabilities = { journeySearch: true, directDestinationDiscovery: false }
+  readonly sourceInfo: ProviderSourceInfo
   private readonly safePublicSourceUrl: string
 
   constructor(
@@ -188,6 +202,10 @@ export class CfrTrainProvider implements TrainDataProvider {
   ) {
     this.validateAcquisitionUrl()
     this.safePublicSourceUrl = this.sanitizedPublicSourceUrl()
+    this.sourceInfo = {
+      name: 'CFR Călători',
+      url: this.safePublicSourceUrl,
+    }
   }
 
   isReady() { return true }
@@ -197,8 +215,8 @@ export class CfrTrainProvider implements TrainDataProvider {
     let searchPageUrl: string
     try {
       searchPageUrl = this.buildSearchPageUrl(criteria)
-    } catch (error) {
-      return this.failure('unavailable', fetchedAt, error)
+    } catch {
+      return this.failure('unavailable', fetchedAt)
     }
 
     let searchPage: Response
@@ -208,34 +226,35 @@ export class CfrTrainProvider implements TrainDataProvider {
           Accept: 'text/html,application/xhtml+xml',
           'User-Agent': 'BikeTrain-Romania/0.1 (+local MVP; cached requests)',
         },
+        redirect: 'error',
         signal: AbortSignal.timeout(12_000),
       })
-    } catch (error) {
-      return this.failure('unavailable', fetchedAt, error)
+    } catch {
+      return this.failure('unavailable', fetchedAt)
     }
 
     if (searchPage.status === 429) {
       return {
-        ...this.failure('rate_limited', fetchedAt, 'CFR limitează temporar cererile.'),
+        ...this.failure('rate_limited', fetchedAt),
         retryAfterSeconds: retryAfterSeconds(searchPage.headers.get('retry-after')),
       }
     }
     if (!searchPage.ok) {
-      return this.failure('unavailable', fetchedAt, `CFR journey source returned ${searchPage.status}`)
+      return this.failure('unavailable', fetchedAt)
     }
 
     let searchPageHtml: string
     try {
       searchPageHtml = await this.readHtml(searchPage)
-    } catch (error) {
-      return this.failure('invalid_payload', fetchedAt, error)
+    } catch {
+      return this.failure('invalid_payload', fetchedAt)
     }
 
     let form: URLSearchParams
     try {
       form = this.searchForm(searchPageHtml, criteria)
-    } catch (error) {
-      return this.failure('invalid_payload', fetchedAt, error)
+    } catch {
+      return this.failure('invalid_payload', fetchedAt)
     }
 
     let resultPage: Response
@@ -249,44 +268,47 @@ export class CfrTrainProvider implements TrainDataProvider {
           ...(this.sessionCookie(searchPage) ? { Cookie: this.sessionCookie(searchPage)! } : {}),
         },
         body: form.toString(),
+        redirect: 'error',
         signal: AbortSignal.timeout(12_000),
       })
-    } catch (error) {
-      return this.failure('unavailable', fetchedAt, error)
+    } catch {
+      return this.failure('unavailable', fetchedAt)
     }
 
     if (resultPage.status === 429) {
       return {
-        ...this.failure('rate_limited', fetchedAt, 'CFR limitează temporar cererile.'),
+        ...this.failure('rate_limited', fetchedAt),
         retryAfterSeconds: retryAfterSeconds(resultPage.headers.get('retry-after')),
       }
     }
     if (!resultPage.ok) {
-      return this.failure('unavailable', fetchedAt, `CFR journey source returned ${resultPage.status}`)
+      return this.failure('unavailable', fetchedAt)
     }
 
     let html: string
     try {
       html = await this.readHtml(resultPage)
-    } catch (error) {
-      return this.failure('invalid_payload', fetchedAt, error)
+    } catch {
+      return this.failure('invalid_payload', fetchedAt)
     }
     if (/recaptchafailed|captcha|access denied|too many requests/i.test(html)) {
-      return this.failure('unavailable', fetchedAt, 'CFR journey source requires interactive access.')
+      return this.failure('unavailable', fetchedAt)
     }
     if (/servicetemporarilyunavailable/i.test(html)) {
-      return this.failure('unavailable', fetchedAt, 'CFR journey source is temporarily unavailable.')
+      return this.failure('unavailable', fetchedAt)
     }
 
     try {
+      const bookingUrl = buildCfrPublicSearchUrl(criteria, this.publicSourceUrl())
       return {
-        options: parseCfrJourneyHtml(html, criteria, this.publicSourceUrl(), fetchedAt),
+        options: parseCfrJourneyHtml(html, criteria, this.publicSourceUrl(), fetchedAt)
+          .map((option) => ({ ...option, bookingUrl })),
         providerId: this.id,
         fetchedAt,
         outcome: 'success',
       }
-    } catch (error) {
-      return this.failure('invalid_payload', fetchedAt, error)
+    } catch {
+      return this.failure('invalid_payload', fetchedAt)
     }
   }
 
@@ -355,13 +377,39 @@ export class CfrTrainProvider implements TrainDataProvider {
     const contentLength = Number(response.headers.get('content-length'))
     const maxBodyBytes = this.options.maxBodyBytes ?? 750_000
     if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
+      try {
+        await response.body?.cancel()
+      } catch {
+        // The size-limit failure remains authoritative if cancellation also fails.
+      }
       throw new Error('CFR response exceeds the configured size limit.')
     }
-    const html = await response.text()
-    if (new TextEncoder().encode(html).byteLength > maxBodyBytes) {
-      throw new Error('CFR response exceeds the configured size limit.')
+
+    if (!response.body) return ''
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let html = ''
+    let totalBytes = 0
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        totalBytes += value.byteLength
+        if (totalBytes > maxBodyBytes) {
+          try {
+            await reader.cancel()
+          } catch {
+            // Keep the response classified as invalid even if cancellation fails.
+          }
+          throw new Error('CFR response exceeds the configured size limit.')
+        }
+        html += decoder.decode(value, { stream: true })
+      }
+      return html + decoder.decode()
+    } finally {
+      reader.releaseLock()
     }
-    return html
   }
 
   private sessionCookie(response: Response) {
@@ -372,12 +420,7 @@ export class CfrTrainProvider implements TrainDataProvider {
   }
 
   private stationName(id: string): string {
-    const currentPlannerName = CURRENT_CFR_STATION_NAMES[id]
-    if (currentPlannerName) return currentPlannerName
-    const station = stationsById.get(id)
-    return normalizeCurrentCfrName(
-      station?.providerNames?.cfr ?? station?.providerName ?? station?.name ?? id,
-    )
+    return cfrStationName(id)
   }
 
   private allowedHosts() {
@@ -390,8 +433,14 @@ export class CfrTrainProvider implements TrainDataProvider {
 
   private validateAcquisitionUrl() {
     const url = new URL(this.endpoint)
-    if (url.protocol !== 'https:' || !this.allowedHosts().includes(url.hostname)) {
-      throw new Error('CFR endpoint must use an explicitly allowed HTTPS host')
+    if (
+      url.protocol !== 'https:'
+      || url.port
+      || url.username
+      || url.password
+      || !this.allowedHosts().includes(url.hostname)
+    ) {
+      throw new Error('CFR endpoint must use an explicitly allowed HTTPS host without credentials or a non-standard port')
     }
   }
 
@@ -401,7 +450,7 @@ export class CfrTrainProvider implements TrainDataProvider {
     const allowedPublicHosts = isExplicit
       ? this.allowedHosts()
       : ['bilete.cfrcalatori.ro']
-    if (url.protocol !== 'https:' || !allowedPublicHosts.includes(url.hostname)) {
+    if (url.protocol !== 'https:' || url.port || !allowedPublicHosts.includes(url.hostname)) {
       throw new Error('Public CFR source URL must use an explicitly allowed HTTPS host')
     }
     url.username = ''
@@ -414,11 +463,10 @@ export class CfrTrainProvider implements TrainDataProvider {
   private failure(
     outcome: 'unsupported' | 'unavailable' | 'rate_limited' | 'invalid_payload',
     fetchedAt: string,
-    error: unknown,
   ): ProviderSearchResult {
     return {
       options: [], providerId: this.id, fetchedAt, outcome,
-      warning: error instanceof Error ? error.message : String(error),
+      warning: CFR_FAILURE_WARNINGS[outcome],
     }
   }
 }
@@ -429,6 +477,29 @@ function normalizeCurrentCfrName(value: string) {
     .replaceAll('ş', 'ș')
     .replaceAll('Ţ', 'Ț')
     .replaceAll('ţ', 'ț')
+}
+
+export function buildCfrPublicSearchUrl(
+  criteria: TrainSearchCriteria,
+  publicPlannerUrl = DEFAULT_PUBLIC_SOURCE_URL,
+  now = new Date(),
+) {
+  return buildCfrBookingUrl(
+    criteria,
+    cfrStationName(criteria.from),
+    cfrStationName(criteria.to),
+    publicPlannerUrl,
+    now,
+  )
+}
+
+function cfrStationName(id: string) {
+  const currentPlannerName = CURRENT_CFR_STATION_NAMES[id]
+  if (currentPlannerName) return currentPlannerName
+  const station = stationsById.get(id)
+  return normalizeCurrentCfrName(
+    station?.providerNames?.cfr ?? station?.providerName ?? station?.name ?? id,
+  )
 }
 
 function retryAfterSeconds(value: string | null): number | undefined {

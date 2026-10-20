@@ -28,6 +28,30 @@ describe('parseCfrJourneyHtml', () => {
       trainNumber: '1622',
       bikeAllowed: true,
       bikeCapacity: null,
+      bikeCapacityEvidence: {
+        source: 'Transportul bicicletelor și schiurilor CFR Călători',
+        sourceUrl: 'https://www.cfrcalatori.ro/transportul-bicicletelor-si-schiurilor/',
+        verifiedAt: '2026-10-15',
+      },
+      bikeFeeLei: null,
+      bikeFeeEvidence: {
+        source: 'Întrebări frecvente CFR — tarife biciclete nepliabile',
+        sourceUrl: 'https://www.cfrcalatori.ro/intrebari-frecvente/',
+        verifiedAt: '2026-10-15',
+        notes: [{
+          text: 'Există o diferență între pagina dedicată CFR (Regio, Interregio și Intercity) și FAQ-ul CFR, care indică orice rang cu serviciu. Verifică tariful final la operator.',
+          source: 'Transportul bicicletelor și schiurilor CFR Călători',
+          sourceUrl: 'https://www.cfrcalatori.ro/transportul-bicicletelor-si-schiurilor/',
+          verifiedAt: '2026-10-15',
+        }],
+        bands: [
+          { minDistanceKm: 1, maxDistanceKm: 60, feeLei: 8 },
+          { minDistanceKm: 61, maxDistanceKm: 120, feeLei: 11.5 },
+          { minDistanceKm: 121, maxDistanceKm: 250, feeLei: 17.5 },
+          { minDistanceKm: 251, maxDistanceKm: 500, feeLei: 23.5 },
+          { minDistanceKm: 501, maxDistanceKm: null, feeLei: 29 },
+        ],
+      },
       reliability: 'official',
     })
   })
@@ -55,6 +79,28 @@ describe('parseCfrJourneyHtml', () => {
       trainCategory: 'IR', trainNumber: '1622', durationMinutes: 23,
       departureAt: expect.stringContaining('19:17'),
       arrivalAt: expect.stringContaining('19:40'), bikeAllowed: true,
+      bikeReservation: 'unknown',
+      bikeTicketPurchaseEvidence: {
+        source: 'Termeni CFR Călători online — bilet pentru bicicletă',
+        sourceUrl: 'https://bilete.cfrcalatori.ro/ro-RO/Home/TermsConditions',
+        verifiedAt: '2026-10-15',
+      },
+      bikeReservationEvidence: {
+        source: 'Transportul bicicletelor și schiurilor CFR Călători — punctul 3',
+        sourceUrl: 'https://www.cfrcalatori.ro/transportul-bicicletelor-si-schiurilor/',
+        verifiedAt: '2026-10-15',
+      },
+      bikeCapacityEvidence: {
+        source: 'Transportul bicicletelor și schiurilor CFR Călători',
+        sourceUrl: 'https://www.cfrcalatori.ro/transportul-bicicletelor-si-schiurilor/',
+        verifiedAt: '2026-10-15',
+      },
+      bikeFeeLei: null,
+      bikeFeeEvidence: {
+        source: 'Întrebări frecvente CFR — tarife biciclete nepliabile',
+        sourceUrl: 'https://www.cfrcalatori.ro/intrebari-frecvente/',
+        verifiedAt: '2026-10-15',
+      },
     })
   })
 
