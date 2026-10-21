@@ -8,7 +8,7 @@ Versione 1, 15 ottobre 2026. Questo piano consolida gli otto precedenti heartbea
 - Leggere `AGENTS.md`, questo piano e `docs/heartbeat-state.md`; poi soltanto i file pertinenti. Conservare tutte le modifiche preesistenti. Nessun commit, deploy, pubblicazione o messaggio a terzi da questa automazione.
 - Un solo writer. Prima di modificare file acquisire il controllo locale di idempotenza descritto sotto; se non autorizza il run, terminare senza intervenire. Non sostituire lease altrui per il solo trascorrere del tempo.
 - Filtro fail-closed: `bikeAllowed === true` e `bikeType === "non_foldable"`. Pilot CFR limitato a Brașov, Sibiu, Covasna e Mureș; mantenere confine provider, provenienza e timestamp. Non inventare corse, prezzi o disponibilità.
-- Non eseguire richieste live a CFR, non abilitare l'adapter e non inviare la bozza di richiesta. L'autorizzazione scritta o la revisione documentata prevista dal README resta un requisito esterno. Non dedurla da questa manutenzione dello scheduler.
+- L’utente ha autorizzato il 21 ottobre 2026 l’attivazione dell’adapter esistente; il riferimento è in `docs/cfr-authorization-record.md`. Questo non autorizza il heartbeat a eseguire smoke live, deploy, pubblicazioni o messaggi a terzi: tali azioni richiedono una richiesta esplicita nel turno operativo. Il heartbeat resta read-only rispetto alla pubblicazione.
 - Per fatti ferroviari variabili consultare fonti primarie quando si modifica il dato o quando il controllo di freschezza lo richiede. Conservare fonte, data, differenze e incertezze; non rigenerare il catalogo se non è cambiata una fonte pertinente.
 
 ## Coda finita
@@ -21,7 +21,7 @@ Verificare lo stato reale prima di iniziare: marcare una voce già dimostrata co
 | TB-02 | Completare la QA visuale dei flussi locali | Screenshot mobile/desktop e interazioni: ricerca tratta, esplorazione destinazioni, ritorni espansi, cambio data/origine, modalità provider disattivato, tastiera/focus. Nessuna chiamata live a CFR. Correggere solo difetti osservati; se manca il browser, registrare `manual_pending`. |
 | TB-03 | Verificare i criteri dati/provider del pilot locale | Evidenze pertinenti su filtro bici, allowlist quattro județe, provenienza/freschezza, stati disattivato/degradato e integrità del confine provider. Riutilizzare test correnti; correggere solo gap riproducibili. |
 | TB-04 | Preparare la consegna locale e la decisione CFR | Un checkpoint con prove TB-01/03, esito reale TB-02, comando di verifica pertinente, limiti noti e riferimento alla bozza non inviata. Non riscrivere documenti già adeguati. |
-| TB-05 | Verifica live e pubblicazione del pilot | `waiting_external` finché manca la decisione documentata e l'autorizzazione esplicita alle operazioni. Nessun tentativo live o deploy automatico. |
+| TB-05 | Verifica live e pubblicazione del pilot | L’autorizzazione per il perimetro corrente è registrata in `docs/cfr-authorization-record.md`; resta `waiting_external` finché la prova live e la pubblicazione non sono verificate. Il heartbeat non esegue richieste a CFR né deploy o pubblicazioni: serve un’istruzione esplicita in un turno manuale. Gli ampliamenti richiedono un nuovo riferimento autorizzativo. |
 
 TB-01/04 chiusi non significano pilot pronto per utenti. Il completamento richiede le prove applicabili di QA, integrazione autorizzata e consegna previste dal prodotto. Non dichiarare completato il Goal soltanto per fermare l'automazione.
 

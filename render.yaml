@@ -8,7 +8,9 @@ services:
     healthCheckPath: /api/health
     envVars:
       - key: ENABLE_CFR_WEB_ADAPTER
-        value: "false"
+        value: "true"
+      - key: CFR_WRITTEN_AUTHORIZATION_REF
+        value: "docs/cfr-authorization-record.md#cfr-chat-authorization-2026-10-21"
       - key: CFR_JOURNEY_ENDPOINT
         value: https://bilete.cfrcalatori.ro/ro-RO/Itineraries
       - key: CFR_ALLOWED_HOSTS
