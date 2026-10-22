@@ -6,7 +6,7 @@ L’applicazione non mostra un orario ferroviario generico. Un risultato supera 
 
 ## Avvio rapido
 
-Requisiti: Node.js 20.19+, npm e un sistema glibc/macOS/Windows supportato dai prebuild di `better-sqlite3`.
+Requisiti: Node.js 22.23.4 LTS o 24.22.1 LTS (e patch successive della stessa major), npm e un sistema glibc/macOS/Windows supportato dai prebuild di `better-sqlite3`.
 
 ```bash
 npm install
@@ -25,6 +25,8 @@ npm run validate
 ```
 
 La validazione include uno smoke sul bundle compilato: avvia temporaneamente il server su loopback con l’adapter CFR disattivato e controlla SPA, liveness, readiness, copertura e risposta fail-closed della ricerca. Non interroga servizi esterni.
+
+Lo stato di preparazione alla pubblicazione, i limiti di hosting e le verifiche richieste prima del lancio sono in [docs/publication-readiness.md](docs/publication-readiness.md).
 
 Lo smoke test seguente può generare fino a otto richieste al planner CFR. Per il deployment autorizzato, imposta il riferimento registrato e aggiungi il flag di conferma. Avvia il server in un terminale:
 

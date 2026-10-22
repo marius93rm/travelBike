@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm ci && npm run build
-    startCommand: npm start
+    startCommand: NODE_ENV=production npm start
     healthCheckPath: /api/health
     envVars:
       - key: ENABLE_CFR_WEB_ADAPTER

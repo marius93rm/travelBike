@@ -30,6 +30,15 @@ describe('SQLiteCacheStore', () => {
     second.close()
   })
 
+  it('deletes expired persisted entries without waiting for a read or a new write', () => {
+    const cache = store()
+    cache.set({ key: 'expired', storedAt: 10, expiresAt: 100, value: { route: 'codlea-brasov' } })
+
+    expect(cache.deleteExpired(100)).toBe(1)
+    expect(cache.get('expired', 99)).toBeNull()
+    cache.close()
+  })
+
   it('prunes least-recently-stored entries beyond maxEntries', () => {
     const cache = store(2)
     cache.set({ key: 'one', storedAt: 1, expiresAt: 100, value: 1 })

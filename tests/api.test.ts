@@ -215,10 +215,25 @@ describe('operational API endpoints', () => {
     expect(response.headers['x-frame-options']).toBe('DENY')
     expect(response.headers['referrer-policy']).toBe('no-referrer')
     expect(response.headers['content-security-policy']).toContain("default-src 'self'")
+    expect(response.headers['content-security-policy']).toContain("form-action 'self'")
+    expect(response.headers['permissions-policy']).toBe('camera=(), microphone=(), geolocation=(), payment=()')
 
     const readiness = await request(createApp(new TrainSearchService([]))).get('/api/readiness')
     expect(readiness.status).toBe(503)
     expect(readiness.body).toMatchObject({ ok: false, status: 'degraded' })
+  })
+
+  it('adds HSTS only to the production server', async () => {
+    const originalNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+
+    try {
+      const response = await request(createApp(new TrainSearchService([]))).get('/api/health')
+      expect(response.headers['strict-transport-security']).toBe('max-age=31536000')
+    } finally {
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = originalNodeEnv
+    }
   })
 
   it('returns a JSON API 404 rather than falling through to the SPA', async () => {

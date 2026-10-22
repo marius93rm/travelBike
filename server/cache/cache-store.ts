@@ -10,6 +10,7 @@ export interface CacheStore {
   get<T>(key: string, now?: number): CacheRecord<T> | null
   set<T>(record: CacheRecord<T>): void
   delete(key: string): void
+  deleteExpired(now?: number): number
   close?(): void
 }
 
@@ -32,5 +33,16 @@ export class MemoryCacheStore implements CacheStore {
 
   delete(key: string) {
     this.entries.delete(key)
+  }
+
+  deleteExpired(now = Date.now()) {
+    let removed = 0
+    for (const [key, record] of this.entries) {
+      if (record.expiresAt <= now) {
+        this.entries.delete(key)
+        removed += 1
+      }
+    }
+    return removed
   }
 }

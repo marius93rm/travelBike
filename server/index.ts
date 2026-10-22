@@ -26,6 +26,7 @@ if (process.env.ENABLE_CFR_WEB_ADAPTER === 'true'
 }
 const pilot = createPilotStationConfig()
 let cacheStore: SQLiteCacheStore | undefined
+let cacheCleanupInterval: ReturnType<typeof setInterval> | undefined
 let cfrConfigured = false
 
 function positiveInteger(value: string | undefined, fallback: number): number {
@@ -38,6 +39,14 @@ function optionalNonNegativeInteger(value: string | undefined): number | undefin
   if (value === undefined || value.trim() === '') return undefined
   const parsed = Number(value)
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined
+}
+
+function purgeExpiredCache() {
+  try {
+    cacheStore?.deleteExpired(Date.now())
+  } catch {
+    console.error(JSON.stringify({ event: 'cache_cleanup', outcome: 'failed' }))
+  }
 }
 
 // The CFR page is a public UI, not a documented API. Keep acquisition disabled
@@ -61,6 +70,9 @@ if (cfrEnabled) {
     )
     mkdirSync(path.dirname(cachePath), { recursive: true })
     cacheStore = new SQLiteCacheStore(cachePath, { maxEntries: 2_000 })
+    purgeExpiredCache()
+    cacheCleanupInterval = setInterval(purgeExpiredCache, 5 * 60 * 1_000)
+    cacheCleanupInterval.unref()
     providers.push(
       new CachedTrainProvider(
         new ControlledTrainProvider(
@@ -121,7 +133,9 @@ const server = app.listen(port, '0.0.0.0', () => {
 })
 
 function shutdown() {
+  if (cacheCleanupInterval) clearInterval(cacheCleanupInterval)
   server.close(() => {
+    purgeExpiredCache()
     cacheStore?.close()
     process.exit(0)
   })

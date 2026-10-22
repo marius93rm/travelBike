@@ -84,10 +84,16 @@ try {
 
   const home = await fetch(baseUrl, { signal: AbortSignal.timeout(5_000) })
   assert.equal(home.status, 200, 'the production server should serve the SPA')
+  assert.match(home.headers.get('content-security-policy') ?? '', /form-action 'self'/)
+  assert.equal(
+    home.headers.get('permissions-policy'),
+    'camera=(), microphone=(), geolocation=(), payment=()',
+  )
   assert.match(await home.text(), /<div id="root">/)
 
   const health = await fetch(`${baseUrl}/api/health`, { signal: AbortSignal.timeout(5_000) })
   assert.equal(health.status, 200, 'liveness should be healthy')
+  assert.match(health.headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/)
 
   const readiness = await fetch(`${baseUrl}/api/readiness`, {
     signal: AbortSignal.timeout(5_000),

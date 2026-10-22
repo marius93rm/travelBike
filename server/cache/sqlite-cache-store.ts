@@ -54,5 +54,8 @@ export class SQLiteCacheStore implements CacheStore {
   }
 
   delete(key: string) { this.database.prepare('DELETE FROM train_cache WHERE cache_key = ?').run(key) }
+  deleteExpired(now = Date.now()) {
+    return this.database.prepare('DELETE FROM train_cache WHERE expires_at <= ?').run(now).changes
+  }
   close() { this.database.close() }
 }
