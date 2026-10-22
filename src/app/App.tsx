@@ -1,4 +1,4 @@
-import { AlertTriangle, Bike, CalendarDays, CheckCircle2, Compass, Info, RefreshCw, Search, Share2 } from 'lucide-react'
+import { AlertTriangle, Bike, CalendarDays, CheckCircle2, Clock3, Compass, Info, RefreshCw, Search, Share2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchCoverage, fetchDestinations, fetchTrains } from '../data/train-api.js'
 import {
@@ -27,6 +27,7 @@ import { SearchFreshness } from './components/SearchFreshness.js'
 import { SearchSourceAttribution } from './components/SearchSourceAttribution.js'
 import { ProviderSearchLinks } from './components/ProviderSearchLinks.js'
 import { TrainCard } from './components/TrainCard.js'
+import { filterDepartures, type DepartureTimeFilter } from './departure-filter.js'
 import {
   createEmptyRouteDraft,
   parseRouteCriteria,
@@ -91,6 +92,11 @@ export function App() {
   )
   const [query, setQuery] = useState<TrainSearchCriteria | null>(initialQuery)
   const [data, setData] = useState<TrainSearchResponse | null>(null)
+  const [departureTimeFilter, setDepartureTimeFilter] = useState<DepartureTimeFilter>('all')
+  const visibleTrains = useMemo(
+    () => data ? filterDepartures(data.options, departureTimeFilter) : [],
+    [data, departureTimeFilter],
+  )
   const routeDisabled = data?.meta.providerStatus === 'disabled'
   const [loading, setLoading] = useState(Boolean(initialQuery) && !catalogExpired)
   const [error, setError] = useState(false)
@@ -195,6 +201,7 @@ export function App() {
       setData(null)
       setError(false)
       setLoading(Boolean(next) && !journeyDateBounds().catalogExpired)
+      setDepartureTimeFilter('all')
       setShareStatus('')
       setShareFallbackUrl('')
       setMode('route')
@@ -310,6 +317,7 @@ export function App() {
     setLoading(true)
     setError(false)
     setData(null)
+    setDepartureTimeFilter('all')
     setDraft(next)
     setShareStatus('')
     setShareFallbackUrl('')
@@ -452,7 +460,11 @@ export function App() {
     }
     const summary = data && data.options.length === 0
       ? ro.empty
-      : ro.resultsCount(data?.options.length ?? 0)
+      : data && departureTimeFilter !== 'all'
+        ? visibleTrains.length === 0
+          ? ro.noDeparturesFrom(departureTimeFilter)
+          : ro.filteredResultsCount(visibleTrains.length, data.options.length)
+        : ro.resultsCount(data?.options.length ?? 0)
     const notice = data ? freshnessNotice(data.meta) : ''
     if (data?.meta.warning) return [summary, data.meta.warning, notice].filter(Boolean).join(' ')
     if (data?.meta.reliability === 'fallback') {
@@ -698,6 +710,29 @@ export function App() {
             </div>
           ) : null}
 
+          {!loading && !error && routeCoverage === 'covered' && (data?.options.length ?? 0) > 1 ? (
+            <div className="results-filter-toolbar">
+              <div className="results-filter">
+                <label htmlFor="departure-time-filter">{ro.departureTimeFilterLabel}</label>
+                <select
+                  id="departure-time-filter"
+                  value={departureTimeFilter}
+                  onChange={(event) => setDepartureTimeFilter(event.currentTarget.value as DepartureTimeFilter)}
+                >
+                  <option value="all">{ro.departureTimeFilterAll}</option>
+                  <option value="10">{ro.departureTimeFilterFrom('10:00')}</option>
+                  <option value="14">{ro.departureTimeFilterFrom('14:00')}</option>
+                  <option value="18">{ro.departureTimeFilterFrom('18:00')}</option>
+                </select>
+              </div>
+              {departureTimeFilter !== 'all' && visibleTrains.length > 0 ? (
+                <p className="filtered-results-count">
+                  {ro.filteredResultsCount(visibleTrains.length, data?.options.length ?? 0)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {!loading && !error && routeCoverage === 'covered' && data?.options.length === 0 ? (
             <div className="state-panel">
               <Bike size={30} aria-hidden="true" />
@@ -705,7 +740,24 @@ export function App() {
             </div>
           ) : null}
 
-          {!loading && !error && routeCoverage === 'covered' && data?.options.map((train) => (
+          {!loading && !error && routeCoverage === 'covered' && data && data.options.length > 0 && visibleTrains.length === 0 ? (
+            <div className="state-panel time-filter-empty">
+              <Clock3 size={30} aria-hidden="true" />
+              <h3>{ro.noDeparturesFrom(departureTimeFilter)}</h3>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setDepartureTimeFilter('all')
+                  document.getElementById('departure-time-filter')?.focus()
+                }}
+              >
+                {ro.showAllDepartures}
+              </button>
+            </div>
+          ) : null}
+
+          {!loading && !error && routeCoverage === 'covered' && visibleTrains.map((train) => (
             <TrainCard train={train} key={train.id} />
           ))}
             </>

@@ -167,6 +167,11 @@ h2 { margin-bottom: 8px; font-size: clamp(27px, 4vw, 40px); line-height: 1.08; l
 .result-source-attribution a { min-height: 24px; display: inline-flex; align-items: center; gap: 3px; color: var(--pine-900); text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .result-freshness { margin: 0; display: flex; align-items: center; justify-content: flex-end; gap: 5px; color: var(--muted); font-size: 12px; line-height: 1.4; text-align: right; }
 .result-freshness svg { flex: 0 0 auto; }
+.results-filter-toolbar { min-height: 68px; margin-bottom: 16px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
+.results-filter { display: flex; align-items: center; gap: 12px; }
+.results-filter label { color: var(--muted); font-size: 13px; font-weight: 760; }
+.results-filter select { min-height: 44px; min-width: 168px; padding: 0 34px 0 12px; color: var(--ink); background: var(--paper); border: 1px solid #aebbb3; border-radius: 8px; font-weight: 700; cursor: pointer; }
+.filtered-results-count { margin: 0; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .source-warning { margin: 0 0 15px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; color: #684d09; background: var(--yellow-soft); border: 1px solid var(--yellow-border); border-radius: 10px; font-size: 14px; }
 .catalog-expiry-warning { margin: 0 0 18px; align-items: flex-start; }
 .catalog-expiry-warning svg { flex: 0 0 auto; margin-top: 2px; }
@@ -215,6 +220,9 @@ h2 { margin-bottom: 8px; font-size: clamp(27px, 4vw, 40px); line-height: 1.08; l
 .state-panel { min-height: 245px; padding: 40px 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--muted); background: var(--paper); border: 1px dashed #bcc7c0; border-radius: 14px; }
 .state-panel h3 { max-width: 650px; margin: 14px 0 8px; color: var(--ink); font-size: 20px; }
 .state-panel p { max-width: 610px; }
+.time-filter-empty { min-height: 190px; }
+.time-filter-empty > svg { color: var(--pine-800); }
+.time-filter-empty h3 { margin-top: 12px; }
 .loading-state { min-height: 160px; flex-direction: row; gap: 12px; }
 .spinner { width: 22px; height: 22px; border: 3px solid var(--pine-100); border-top-color: var(--pine-800); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -307,6 +315,9 @@ footer .catalog-attribution a:hover { color: var(--orange-dark); }
   .share-search > p { text-align: left; }
   .share-fallback, .share-fallback input { width: 100%; }
   .results-data-meta { justify-items: start; }
+  .results-filter-toolbar { align-items: stretch; flex-direction: column; gap: 8px; }
+  .results-filter { align-items: stretch; flex-direction: column; gap: 6px; }
+  .results-filter select { width: 100%; }
   .result-source-attribution { justify-content: flex-start; }
   .result-freshness { justify-content: flex-start; text-align: left; }
   .train-card { border-left-width: 4px; }

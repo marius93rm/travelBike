@@ -43,6 +43,15 @@ const response: TrainSearchResponse = {
   },
 }
 
+const timeFilterResponse: TrainSearchResponse = {
+  ...response,
+  options: [
+    { ...response.options[0], id: 'evening-train', trainNumber: '1626', departureAt: '2026-10-22T15:00:00Z', arrivalAt: '2026-10-22T15:20:00Z' },
+    { ...response.options[0], id: 'morning-train', trainNumber: '1622', departureAt: '2026-10-22T06:59:00Z', arrivalAt: '2026-10-22T07:20:00Z' },
+    { ...response.options[0], id: 'midday-train', trainNumber: '1624', departureAt: '2026-10-22T07:00:00Z', arrivalAt: '2026-10-22T07:20:00Z' },
+  ],
+}
+
 const destinationResponse: DestinationSearchResponse = {
   options: [{
     destinationStationId: 'codlea',
@@ -309,6 +318,51 @@ describe('BikeTrain app', () => {
       'Afișăm doar curse directe cu serviciu de bicicletă confirmat, nu și locurile rămase. Călătoriți în grup? Verificați la operator locurile pentru toți și câte un bilet pentru fiecare bicicletă.',
     )).toBeVisible()
     expect(screen.queryByText('Locuri biciclete: disponibile')).not.toBeInTheDocument()
+  })
+
+  it('filters departures by Romanian local time and updates the visible result count', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => timeFilterResponse,
+    }))
+    const user = userEvent.setup()
+    const { container } = renderAppWithRoute()
+
+    expect(await screen.findByRole('heading', { name: 'IR 1622' })).toBeVisible()
+    const departureFilter = screen.getByLabelText('Ora plecării')
+
+    await user.selectOptions(departureFilter, '10')
+
+    expect(screen.queryByRole('heading', { name: 'IR 1622' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'IR 1624' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'IR 1626' })).toBeVisible()
+    expect(screen.getByText('2 din 3 trenuri afișate.')).toBeVisible()
+    expect([...container.querySelectorAll('.train-card h3')].map((heading) => heading.textContent))
+      .toEqual(['IR 1624', 'IR 1626'])
+
+    await user.selectOptions(departureFilter, '18')
+
+    expect(screen.queryByRole('heading', { name: 'IR 1624' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'IR 1626' })).toBeVisible()
+    expect(screen.getByText('1 din 3 trenuri afișate.')).toBeVisible()
+  })
+
+  it('offers to restore all trains when a time filter has no matches', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...timeFilterResponse, options: timeFilterResponse.options.slice(1) }),
+    }))
+    const user = userEvent.setup()
+    renderAppWithRoute()
+
+    expect(await screen.findByRole('heading', { name: 'IR 1622' })).toBeVisible()
+    await user.selectOptions(screen.getByLabelText('Ora plecării'), '18')
+
+    expect(screen.getByText('Nu există trenuri cu plecări de la 18:00.')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Arată toate trenurile' }))
+
+    expect(screen.getByRole('heading', { name: 'IR 1622' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'IR 1624' })).toBeVisible()
   })
 
   it('visibly distinguishes fallback data', async () => {

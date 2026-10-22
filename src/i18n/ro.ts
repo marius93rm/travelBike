@@ -54,6 +54,13 @@ export const ro = {
   bikeNormal: 'Bicicletă normală',
   bikeRule: 'Sunt afișate doar trenurile cu serviciu oficial de transport biciclete.',
   resultsTitle: 'Trenuri în care poți lua bicicleta',
+  departureTimeFilterLabel: 'Ora plecării',
+  departureTimeFilterAll: 'Toate orele',
+  departureTimeFilterFrom: (time: string) => `De la ${time}`,
+  filteredResultsCount: (shown: number, total: number) =>
+    `${shown} din ${total} trenuri afișate.`,
+  noDeparturesFrom: (time: string) => `Nu există trenuri cu plecări de la ${time}:00.`,
+  showAllDepartures: 'Arată toate trenurile',
   resultsHint:
     'Afișăm doar curse directe cu serviciu de bicicletă confirmat, nu și locurile rămase. Călătoriți în grup? Verificați la operator locurile pentru toți și câte un bilet pentru fiecare bicicletă.',
   resultsForRoute: 'Rezultate pentru',
