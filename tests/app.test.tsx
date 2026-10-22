@@ -1,9 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { journeyDateBounds } from '../src/domain/journey-date.js'
 import { App } from '../src/app/App.js'
 import type {
+  CoverageResponse,
   DestinationSearchResponse,
   TrainSearchResponse,
 } from '../src/domain/train.js'
@@ -73,10 +74,94 @@ const destinationResponse: DestinationSearchResponse = {
   meta: response.meta,
 }
 
+const discoveryAvailable: CoverageResponse = {
+  pilot: { region: 'test', mappingComplete: true, source: 'default_hubs' },
+  route: { supported: true, coverage: 'available', providerStatus: 'ready' },
+  discovery: { supported: true, coverage: 'available', providerStatus: 'ready' },
+}
+
+function renderAppWithRoute(options: { mockDiscovery?: boolean } = {}) {
+  const date = journeyDateBounds().min
+  window.history.replaceState(null, '', `/?from=codlea&to=brasov&date=${date}`)
+  if (options.mockDiscovery !== false && vi.isMockFunction(window.fetch)) {
+    const originalFetch = window.fetch as unknown as (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => Promise<unknown>
+    const fetchWithDiscovery = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith('/api/coverage')) {
+        return Promise.resolve({ ok: true, json: async () => discoveryAvailable })
+      }
+      return originalFetch(input, init)
+    })
+    vi.stubGlobal('fetch', fetchWithDiscovery)
+  }
+  return render(<App />)
+}
+
 describe('BikeTrain app', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('starts with empty route fields and waits for the user before requesting data', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+
+    expect(screen.getByLabelText('De la')).toHaveValue('')
+    expect(screen.getByLabelText('La')).toHaveValue('')
+    expect(screen.getByRole('heading', { name: 'Alege o rută ca să începem.' })).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Unde pot ajunge?' })).not.toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('asks for valid stations before starting a route search', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Caută trenuri' }))
+
+    expect(screen.getByLabelText('De la')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('La')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getAllByText('Selectează o stație din lista de sugestii.')).toHaveLength(2)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('restores a shared route and sends that route through the native share menu', async () => {
+    const date = journeyDateBounds().min
+    window.history.replaceState(null, '', '/?from=codlea&to=brasov&date=' + date)
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const payload = input.toString().startsWith('/api/coverage') ? discoveryAvailable : response
+      return Promise.resolve({ ok: true, json: async () => payload })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const shareMock = vi.fn().mockResolvedValue(undefined)
+    const originalShare = Object.getOwnPropertyDescriptor(navigator, 'share')
+    Object.defineProperty(navigator, 'share', { configurable: true, value: shareMock })
+    const user = userEvent.setup()
+
+    try {
+      render(<App />)
+
+      expect(screen.getByLabelText('De la')).toHaveValue('Codlea')
+      expect(screen.getByLabelText('La')).toHaveValue('Brașov')
+      await screen.findByText('IR 1622')
+      await user.click(screen.getByRole('button', { name: 'Distribuie căutarea' }))
+
+      expect(shareMock).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'Căutare BikeTrain',
+        url: expect.stringContaining('from=codlea&to=brasov&date=' + date),
+      }))
+      expect(await screen.findByText('Căutarea a fost distribuită.')).toBeVisible()
+    } finally {
+      if (originalShare) Object.defineProperty(navigator, 'share', originalShare)
+      else Reflect.deleteProperty(navigator, 'share')
+    }
   })
 
   it('swaps departure and arrival stations', async () => {
@@ -85,7 +170,7 @@ describe('BikeTrain app', () => {
       json: async () => response,
     }))
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
     expect(screen.getByLabelText('De la')).toHaveValue('Codlea')
     expect(screen.getByLabelText('La')).toHaveValue('Brașov')
@@ -103,7 +188,7 @@ describe('BikeTrain app', () => {
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByRole('heading', {
       name: 'Nu am putut verifica trenurile acum.',
@@ -131,7 +216,7 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByRole('heading', {
       name: 'Nu am putut verifica trenurile acum.',
@@ -147,7 +232,7 @@ describe('BikeTrain app', () => {
       ok: true,
       json: async () => response,
     }))
-    render(<App />)
+    renderAppWithRoute()
 
     const warning = screen.getByRole('note')
     expect(warning).toHaveTextContent('Catalogul CFR verificat va expira în curând.')
@@ -161,7 +246,7 @@ describe('BikeTrain app', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
     const departure = screen.getByLabelText('De la')
     await user.clear(departure)
@@ -183,7 +268,7 @@ describe('BikeTrain app', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
     const departure = screen.getByLabelText('De la')
     await user.clear(departure)
@@ -201,7 +286,7 @@ describe('BikeTrain app', () => {
       json: async () => response,
     }))
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
     const arrival = screen.getByLabelText('La')
     await user.clear(arrival)
@@ -217,9 +302,12 @@ describe('BikeTrain app', () => {
       ok: true,
       json: async () => response,
     }))
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByText('Locuri biciclete: disponibilitate necunoscută')).toBeVisible()
+    expect(screen.getByText(
+      'Afișăm doar curse directe cu serviciu de bicicletă confirmat, nu și locurile rămase. Călătoriți în grup? Verificați la operator locurile pentru toți și câte un bilet pentru fiecare bicicletă.',
+    )).toBeVisible()
     expect(screen.queryByText('Locuri biciclete: disponibile')).not.toBeInTheDocument()
   })
 
@@ -228,10 +316,10 @@ describe('BikeTrain app', () => {
       ok: true,
       json: async () => response,
     }))
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByText('Date de rezervă verificate')).toBeVisible()
-    expect(screen.getByRole('link', { name: /Verifică \/ cumpără pe CFR/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /Verifică disponibilitatea și cumpără pe CFR/ })).toHaveAttribute(
       'href',
       response.options[0].sourceUrl,
     )
@@ -244,7 +332,7 @@ describe('BikeTrain app', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    const { container } = render(<App />)
+    const { container } = renderAppWithRoute()
 
     const searchButton = screen.getByRole('button', { name: 'Caută trenuri' })
     await waitFor(() => expect(searchButton).toBeEnabled())
@@ -293,7 +381,7 @@ describe('BikeTrain app', () => {
       }))
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByText(oldWarning)).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Caută trenuri' }))
@@ -309,14 +397,16 @@ describe('BikeTrain app', () => {
   it('ignores an older route response that arrives after a newer search', async () => {
     type MockResponse = { ok: true; json: () => Promise<TrainSearchResponse> }
     const pendingResponses: Array<(value: MockResponse) => void> = []
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => response })
-      .mockImplementation(() => new Promise<MockResponse>((resolve) => {
-        pendingResponses.push(resolve)
-      }))
+    let routeAttempts = 0
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      if (input.toString().startsWith('/api/trains') && routeAttempts++ === 0) {
+        return Promise.resolve({ ok: true, json: async () => response })
+      }
+      return new Promise<MockResponse>((resolve) => pendingResponses.push(resolve))
+    })
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
     const searchButton = screen.getByRole('button', { name: 'Caută trenuri' })
     await waitFor(() => expect(searchButton).toBeEnabled())
@@ -347,25 +437,6 @@ describe('BikeTrain app', () => {
   it('ignores an older coverage lookup after the discovery date changes', async () => {
     type MockResponse = { ok: true; json: () => Promise<unknown> }
     const pendingResponses: Array<(value: MockResponse) => void> = []
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => response })
-      .mockImplementation(() => new Promise<MockResponse>((resolve) => {
-        pendingResponses.push(resolve)
-      }))
-    vi.stubGlobal('fetch', fetchMock)
-    const user = userEvent.setup()
-    render(<App />)
-
-    await user.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-
-    const currentDate = journeyDateBounds().min
-    const nextDateValue = new Date(`${currentDate}T12:00:00Z`)
-    nextDateValue.setUTCDate(nextDateValue.getUTCDate() + 1)
-    const nextDate = nextDateValue.toISOString().slice(0, 10)
-    fireEvent.change(screen.getByLabelText('Data plecării'), { target: { value: nextDate } })
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
-
     const availableCoverage = {
       pilot: { region: 'Brașov, Sibiu, Covasna și Mureș', mappingComplete: true, source: 'environment' },
       route: { supported: true, coverage: 'available', providerStatus: 'ready' },
@@ -375,6 +446,34 @@ describe('BikeTrain app', () => {
       ...availableCoverage,
       discovery: { supported: false, coverage: 'unsupported', providerStatus: 'unsupported' },
     }
+    let coverageAttempts = 0
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      if (input.toString().startsWith('/api/coverage')) {
+        coverageAttempts += 1
+        if (coverageAttempts === 1) {
+          return Promise.resolve({ ok: true, json: async () => availableCoverage })
+        }
+        return new Promise<MockResponse>((resolve) => pendingResponses.push(resolve))
+      }
+      return Promise.resolve({ ok: true, json: async () => response })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    renderAppWithRoute({ mockDiscovery: false })
+
+    await user.click(await screen.findByRole('tab', { name: 'Unde pot ajunge?' }))
+    const currentDate = journeyDateBounds().min
+    const nextDateValue = new Date(currentDate + 'T12:00:00Z')
+    nextDateValue.setUTCDate(nextDateValue.getUTCDate() + 1)
+    const nextDate = nextDateValue.toISOString().slice(0, 10)
+    fireEvent.change(screen.getByLabelText('Data plecării'), { target: { value: nextDate } })
+    await waitFor(() => expect(pendingResponses).toHaveLength(1))
+
+    const laterDateValue = new Date(nextDate + 'T12:00:00Z')
+    laterDateValue.setUTCDate(laterDateValue.getUTCDate() + 1)
+    const laterDate = laterDateValue.toISOString().slice(0, 10)
+    fireEvent.change(screen.getByLabelText('Data plecării'), { target: { value: laterDate } })
+    await waitFor(() => expect(pendingResponses).toHaveLength(2))
 
     await act(async () => pendingResponses[1]({ ok: true, json: async () => availableCoverage }))
     const searchButton = screen.getByRole('button', { name: 'Arată destinațiile' })
@@ -402,14 +501,14 @@ describe('BikeTrain app', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
     const routeDeparture = screen.getByRole('combobox', { name: 'De la' })
     await user.click(routeDeparture)
     await user.clear(routeDeparture)
     await user.type(routeDeparture, 'Brașov')
     await user.keyboard('{ArrowDown}{Enter}')
-    await user.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
+    await user.click(await screen.findByRole('tab', { name: 'Unde pot ajunge?' }))
     expect(screen.getByLabelText('Plecare din')).toHaveValue('Brașov')
 
     const destinationButton = screen.getByRole('button', { name: 'Arată destinațiile' })
@@ -477,9 +576,9 @@ describe('BikeTrain app', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
-    await user.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
+    await user.click(await screen.findByRole('tab', { name: 'Unde pot ajunge?' }))
     const searchButton = screen.getByRole('button', { name: 'Arată destinațiile' })
     await waitFor(() => expect(searchButton).toBeEnabled())
     await user.click(searchButton)
@@ -530,9 +629,9 @@ describe('BikeTrain app', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
-    await user.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
+    await user.click(await screen.findByRole('tab', { name: 'Unde pot ajunge?' }))
     const discoverButton = await screen.findByRole('button', { name: 'Arată destinațiile' })
     await waitFor(() => expect(discoverButton).toBeEnabled())
     await user.click(discoverButton)
@@ -617,9 +716,9 @@ describe('BikeTrain app', () => {
       }
     }))
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
-    await user.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
+    await user.click(await screen.findByRole('tab', { name: 'Unde pot ajunge?' }))
     const searchButton = await screen.findByRole('button', { name: 'Arată destinațiile' })
     await user.click(searchButton)
 
@@ -638,13 +737,13 @@ describe('BikeTrain app', () => {
       json: async () => response,
     }))
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
     const routeTab = screen.getByRole('tab', { name: 'Caută o rută' })
     routeTab.focus()
     await user.keyboard('{ArrowRight}')
 
-    const discoverTab = screen.getByRole('tab', { name: 'Unde pot ajunge?' })
+    const discoverTab = await screen.findByRole('tab', { name: 'Unde pot ajunge?' })
     expect(discoverTab).toHaveAttribute('aria-selected', 'true')
     expect(discoverTab).toHaveFocus()
   })
@@ -660,14 +759,14 @@ describe('BikeTrain app', () => {
       json: async () => input.toString().startsWith('/api/coverage') ? coverage : response,
     })))
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
     const firstDiscoveryDateValue = new Date(`${journeyDateBounds().min}T12:00:00Z`)
     firstDiscoveryDateValue.setUTCDate(firstDiscoveryDateValue.getUTCDate() + 1)
     const firstDiscoveryDate = firstDiscoveryDateValue.toISOString().slice(0, 10)
     fireEvent.change(screen.getByLabelText('Data'), { target: { value: firstDiscoveryDate } })
 
-    await user.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
+    await user.click(await screen.findByRole('tab', { name: 'Unde pot ajunge?' }))
     expect(screen.getByLabelText('Plecare din')).toHaveValue('Codlea')
     expect(screen.getByLabelText('Data plecării')).toHaveValue(firstDiscoveryDate)
 
@@ -688,7 +787,7 @@ describe('BikeTrain app', () => {
     laterRouteDateValue.setUTCDate(laterRouteDateValue.getUTCDate() + 1)
     const laterRouteDate = laterRouteDateValue.toISOString().slice(0, 10)
     fireEvent.change(screen.getByLabelText('Data'), { target: { value: laterRouteDate } })
-    await user.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
+    await user.click(await screen.findByRole('tab', { name: 'Unde pot ajunge?' }))
 
     expect(screen.getByLabelText('Plecare din')).toHaveValue('Brașov')
     expect(screen.getByLabelText('Data plecării')).toHaveValue(preservedDiscoveryDate)
@@ -700,10 +799,10 @@ describe('BikeTrain app', () => {
       json: async () => response,
     }))
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
     const routeTab = screen.getByRole('tab', { name: 'Caută o rută' })
-    const discoverTab = screen.getByRole('tab', { name: 'Unde pot ajunge?' })
+    const discoverTab = await screen.findByRole('tab', { name: 'Unde pot ajunge?' })
     const routePanel = document.getElementById(routeTab.getAttribute('aria-controls')!)
     const discoverPanel = document.getElementById(discoverTab.getAttribute('aria-controls')!)
 
@@ -725,7 +824,7 @@ describe('BikeTrain app', () => {
       json: async () => response,
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     const skipLink = screen.getByRole('link', { name: 'Sari la conținut' })
     const main = screen.getByRole('main')
@@ -745,15 +844,17 @@ describe('BikeTrain app', () => {
     expect(screen.queryByText('Catalog național')).not.toBeInTheDocument()
   })
 
-  it('stops both search modes when the published station catalog expires', () => {
+  it('stops searches and explains catalog expiry when the published station catalog expires', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-12-13T09:00:00+02:00'))
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    renderAppWithRoute()
 
-    expect(screen.getByRole('heading', { name: 'Catalogul CFR verificat a expirat.' })).toBeVisible()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Catalogul CFR verificat a expirat. Catalogul este valabil până la 12 decembrie 2026.',
+    )
     expect(screen.getByLabelText('Data')).toBeDisabled()
     const routeSearchButton = screen.getByRole('button', { name: 'Caută trenuri' })
     expect(routeSearchButton).toBeDisabled()
@@ -761,21 +862,8 @@ describe('BikeTrain app', () => {
     expect(screen.queryByText(/Catalogul este valabil până la 12 decembrie 2026/, {
       selector: '.route-action-reason',
     })).not.toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Catalogul CFR verificat a expirat. Catalogul este valabil până la 12 decembrie 2026.',
-    )
     expect(fetchMock).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
-
-    expect(screen.getByRole('heading', { name: 'Catalogul CFR verificat a expirat.' })).toBeVisible()
-    expect(screen.getByLabelText('Data plecării')).toBeDisabled()
-    const discoverySearchButton = screen.getByRole('button', { name: 'Arată destinațiile' })
-    expect(discoverySearchButton).toBeDisabled()
-    expect(discoverySearchButton).toHaveAttribute('aria-describedby', 'discover-date-hint')
-    expect(screen.queryByText(/Catalogul este valabil până la 12 decembrie 2026/, {
-      selector: '.discovery-action-reason',
-    })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Unde pot ajunge?' })).not.toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -784,7 +872,11 @@ describe('BikeTrain app', () => {
     vi.setSystemTime(new Date('2026-12-12T21:59:00Z'))
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
 
-    render(<App />)
+    renderAppWithRoute()
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
 
     const routeTab = screen.getByRole('tab', { name: 'Caută o rută' })
     const discoverTab = screen.getByRole('tab', { name: 'Unde pot ajunge?' })
@@ -814,7 +906,7 @@ describe('BikeTrain app', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    renderAppWithRoute()
 
     const routeDateInput = screen.getByLabelText('Data')
     expect(routeDateInput).toHaveValue('2026-10-14')
@@ -828,6 +920,10 @@ describe('BikeTrain app', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(fetchMock.mock.calls[1]?.[0]).toContain('date=2026-10-15')
 
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
     fireEvent.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
     expect(screen.getByLabelText('Data plecării')).toHaveValue('2026-10-15')
   })
@@ -841,7 +937,7 @@ describe('BikeTrain app', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    renderAppWithRoute()
     await act(async () => {
       await Promise.resolve()
       await Promise.resolve()
@@ -882,7 +978,7 @@ describe('BikeTrain app', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    renderAppWithRoute()
     await act(async () => {
       await Promise.resolve()
       await Promise.resolve()
@@ -946,7 +1042,7 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByText('de verificat la operator')).toBeVisible()
     expect(screen.getByText('Rezervarea locului pentru călător:')).toBeVisible()
@@ -1002,7 +1098,7 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByText(
       'Supliment bicicletă: 8–29 lei (TVA inclus); suma exactă depinde de zona kilometrică și trebuie verificată la CFR',
@@ -1019,7 +1115,7 @@ describe('BikeTrain app', () => {
       json: async () => response,
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByText('Supliment bicicletă: de verificat')).toBeVisible()
     expect(screen.queryByText('Supliment bicicletă: 8 lei')).not.toBeInTheDocument()
@@ -1035,10 +1131,17 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
-    const bookingLink = await screen.findByRole('link', { name: /Verifică \/ cumpără pe CFR/ })
+    const bikeSummary = await screen.findByRole('region', { name: 'Rezumat bicicletă și pasul următor' })
+    expect(within(bikeSummary).getByText('Bicicletă acceptată')).toBeVisible()
+    expect(within(bikeSummary).getByText('Locuri biciclete: disponibilitate necunoscută')).toBeVisible()
+    expect(within(bikeSummary).getByText('Supliment bicicletă: de verificat')).toBeVisible()
+    const bookingLink = within(bikeSummary).getByRole('link', { name: /Verifică disponibilitatea și cumpără pe CFR/ })
     expect(bookingLink).toHaveAttribute('href', bookingUrl)
+    expect(bookingLink.compareDocumentPosition(
+      within(bikeSummary).getByText(/Biletul pentru bicicletă este separat/),
+    ) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByRole('link', { name: /Verificat din sursa CFR Călători/ })).toHaveAttribute(
       'href',
       'https://www.cfrcalatori.ro/',
@@ -1055,7 +1158,7 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByRole('heading', {
       name: 'Nu am găsit o cursă directă cu transport pentru biciclete confirmat. Rutele cu schimbări nu sunt incluse în această căutare.',
@@ -1083,7 +1186,7 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     const cachedStatus = await screen.findByText('Răspuns din cache, nu live')
     expect(cachedStatus).toBeVisible()
@@ -1110,7 +1213,7 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     const mixedStatus = await screen.findByText('Surse mixte: răspunsuri live și salvate')
     expect(mixedStatus).toBeVisible()
@@ -1138,7 +1241,7 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByText('Sursă oficială')).toBeVisible()
     expect(screen.queryByText('Răspuns din cache, nu live')).not.toBeInTheDocument()
@@ -1168,7 +1271,7 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByRole('link', { name: /CFR Călători/ })).toHaveAttribute(
       'href',
@@ -1186,7 +1289,7 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByText('Date verificate la')).toBeVisible()
     expect(screen.getByText('3 sept. 2026, 14:20')).toBeVisible()
@@ -1194,27 +1297,22 @@ describe('BikeTrain app', () => {
   })
 
   it('announces the guidance when no compatible direct destinations are found', async () => {
-    const availableCoverage = {
-      pilot: { region: 'Brașov, Sibiu, Covasna și Mureș', mappingComplete: true, source: 'default_hubs' },
-      route: { supported: true, coverage: 'available', providerStatus: 'ready' },
-      discovery: { supported: true, coverage: 'available', providerStatus: 'ready' },
+    const emptyDestinations: DestinationSearchResponse = {
+      ...destinationResponse,
+      options: [],
+      meta: { ...destinationResponse.meta, coverage: 'covered' },
     }
-    vi.stubGlobal('fetch', vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => response })
-      .mockResolvedValueOnce({ ok: true, json: async () => availableCoverage })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          ...destinationResponse,
-          options: [],
-          meta: { ...destinationResponse.meta, coverage: 'covered' },
-        }),
-      }))
+    vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
+      const payload = input.toString().startsWith('/api/destinations')
+        ? emptyDestinations
+        : response
+      return Promise.resolve({ ok: true, json: async () => payload })
+    }))
 
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
-    await user.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
+    await user.click(await screen.findByRole('tab', { name: 'Unde pot ajunge?' }))
     const searchButton = await screen.findByRole('button', { name: 'Arată destinațiile' })
     await user.click(searchButton)
 
@@ -1227,11 +1325,6 @@ describe('BikeTrain app', () => {
   })
 
   it('offers a retry when destination coverage becomes temporarily unavailable', async () => {
-    const availableCoverage = {
-      pilot: { region: 'Brașov, Sibiu, Covasna și Mureș', mappingComplete: true, source: 'default_hubs' },
-      route: { supported: true, coverage: 'available', providerStatus: 'ready' },
-      discovery: { supported: true, coverage: 'available', providerStatus: 'ready' },
-    }
     const unavailableDestinations = {
       ...destinationResponse,
       options: [],
@@ -1245,16 +1338,19 @@ describe('BikeTrain app', () => {
         degraded: true,
       },
     }
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => response })
-      .mockResolvedValueOnce({ ok: true, json: async () => availableCoverage })
-      .mockResolvedValueOnce({ ok: true, json: async () => unavailableDestinations })
-      .mockResolvedValueOnce({ ok: true, json: async () => destinationResponse })
+    let destinationAttempts = 0
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = input.toString()
+      const payload = url.startsWith('/api/destinations')
+        ? (++destinationAttempts === 1 ? unavailableDestinations : destinationResponse)
+        : response
+      return Promise.resolve({ ok: true, json: async () => payload })
+    })
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
-    await user.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
+    await user.click(await screen.findByRole('tab', { name: 'Unde pot ajunge?' }))
     const searchButton = await screen.findByRole('button', { name: 'Arată destinațiile' })
     await vi.waitFor(() => expect(searchButton).toBeEnabled())
     await user.click(searchButton)
@@ -1265,7 +1361,8 @@ describe('BikeTrain app', () => {
     await user.click(screen.getByRole('button', { name: 'Încearcă din nou' }))
 
     expect(await screen.findByRole('heading', { name: 'Codlea' })).toBeVisible()
-    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(destinationAttempts).toBe(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('distinguishes missing coverage from a confirmed empty result', async () => {
@@ -1286,7 +1383,7 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByRole('heading', { name: 'Ruta nu este încă acoperită de pilot.' })).toBeVisible()
     expect(screen.queryByText('Traseul solicitat nu este acoperit de pilotul curent.')).not.toBeInTheDocument()
@@ -1327,9 +1424,9 @@ describe('BikeTrain app', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute()
 
-    await user.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
+    await user.click(await screen.findByRole('tab', { name: 'Unde pot ajunge?' }))
     const searchButton = screen.getByRole('button', { name: 'Arată destinațiile' })
     await waitFor(() => expect(searchButton).toBeEnabled())
     await user.click(searchButton)
@@ -1366,7 +1463,7 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByRole('heading', { name: 'Datele CFR sunt temporar indisponibile.' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Încearcă din nou' })).toBeVisible()
@@ -1413,7 +1510,7 @@ describe('BikeTrain app', () => {
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(await screen.findByRole('heading', {
       name: 'Căutarea live CFR nu este activată.',
@@ -1476,7 +1573,7 @@ describe('BikeTrain app', () => {
       json: async () => response,
     }))
 
-    render(<App />)
+    renderAppWithRoute()
 
     expect(screen.getByRole('link', { name: 'Mersul trenurilor CFR 2025–2026' }))
       .toHaveAttribute('href', 'https://data.gov.ro/ro/dataset/c4f71dbb-de39-49b2-b697-5b60a5f299a2')
@@ -1487,7 +1584,7 @@ describe('BikeTrain app', () => {
       .toHaveTextContent(/valabil până la 12 decembrie 2026/)
   })
 
-  it('checks discovery capability before offering a destination search', async () => {
+  it('does not offer destination search when discovery is unsupported', async () => {
     let finishCoverage: ((value: { ok: true; json: () => Promise<unknown> }) => void) | undefined
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => response })
@@ -1495,24 +1592,10 @@ describe('BikeTrain app', () => {
         finishCoverage = resolve
       }))
     vi.stubGlobal('fetch', fetchMock)
-    const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute({ mockDiscovery: false })
 
-    await user.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
-
-    const searchButton = screen.getByRole('button', { name: 'Arată destinațiile' })
-    expect(searchButton).toBeDisabled()
-    expect(searchButton).toHaveAttribute(
-      'aria-describedby',
-      'discover-date-hint discover-action-reason',
-    )
-    expect(screen.getByText(
-      'Căutăm destinații directe și retururi compatibile…',
-      { selector: '.discovery-action-reason' },
-    )).toBeVisible()
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Căutăm destinații directe și retururi compatibile…',
-    )
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole('tab', { name: 'Unde pot ajunge?' })).not.toBeInTheDocument()
     await act(async () => finishCoverage?.({
       ok: true,
       json: async () => ({
@@ -1522,13 +1605,45 @@ describe('BikeTrain app', () => {
       }),
     }))
 
-    expect(await screen.findByRole('heading', { name: 'Explorarea nu este disponibilă în acest pilot.' })).toBeVisible()
-    expect(screen.getByRole('status')).toHaveTextContent('Explorarea nu este disponibilă în acest pilot.')
-    expect(searchButton).toBeDisabled()
-    expect(screen.getByText(
-      'Explorarea nu este disponibilă în acest pilot.',
-      { selector: '.discovery-action-reason' },
-    )).toBeVisible()
+    expect(screen.queryByRole('tab', { name: 'Unde pot ajunge?' })).not.toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([input]) => input.toString().startsWith('/api/destinations'))).toBe(false)
+  })
+
+  it('returns focus to the route tab when discovery becomes unsupported', async () => {
+    const availableCoverage = {
+      pilot: { region: 'Brașov, Sibiu, Covasna și Mureș', mappingComplete: true, source: 'environment' },
+      route: { supported: true, coverage: 'available', providerStatus: 'ready' },
+      discovery: { supported: true, coverage: 'available', providerStatus: 'ready' },
+    }
+    const unsupportedCoverage = {
+      ...availableCoverage,
+      discovery: { supported: false, coverage: 'unsupported', providerStatus: 'unsupported' },
+    }
+    let coverageAttempts = 0
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = input.toString()
+      if (url.startsWith('/api/coverage')) {
+        const payload = coverageAttempts++ === 0 ? availableCoverage : unsupportedCoverage
+        return Promise.resolve({ ok: true, json: async () => payload })
+      }
+      return Promise.resolve({ ok: true, json: async () => response })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    renderAppWithRoute({ mockDiscovery: false })
+
+    await user.click(await screen.findByRole('tab', { name: 'Unde pot ajunge?' }))
+    const departure = screen.getByRole('combobox', { name: 'Plecare din' })
+    await user.clear(departure)
+    await user.type(departure, 'Sibiu')
+    await user.keyboard('{ArrowDown}{Enter}')
+
+    await waitFor(() => {
+      expect(screen.queryByRole('tab', { name: 'Unde pot ajunge?' })).not.toBeInTheDocument()
+    })
+    const routeTab = screen.getByRole('tab', { name: 'Caută o rută' })
+    expect(routeTab).toHaveAttribute('aria-selected', 'true')
+    expect(routeTab).toHaveFocus()
     expect(fetchMock.mock.calls.some(([input]) => input.toString().startsWith('/api/destinations'))).toBe(false)
   })
 
@@ -1538,16 +1653,22 @@ describe('BikeTrain app', () => {
       route: { supported: true, coverage: 'available', providerStatus: 'ready' },
       discovery: { supported: true, coverage: 'available', providerStatus: 'ready' },
     }
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => response })
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockResolvedValueOnce({ ok: true, json: async () => availableCoverage })
-      .mockResolvedValueOnce({ ok: true, json: async () => destinationResponse })
+    let coverageAttempts = 0
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = input.toString()
+      if (url.startsWith('/api/coverage') && ++coverageAttempts < 2) {
+        return Promise.reject(new TypeError('Failed to fetch'))
+      }
+      const payload = url.startsWith('/api/coverage')
+        ? availableCoverage
+        : url.startsWith('/api/destinations') ? destinationResponse : response
+      return Promise.resolve({ ok: true, json: async () => payload })
+    })
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
-    render(<App />)
+    renderAppWithRoute({ mockDiscovery: false })
 
-    await user.click(screen.getByRole('tab', { name: 'Unde pot ajunge?' }))
+    await user.click(await screen.findByRole('tab', { name: 'Unde pot ajunge?' }))
 
     expect(await screen.findByRole('heading', {
       name: 'Datele CFR sunt temporar indisponibile.',
@@ -1560,6 +1681,7 @@ describe('BikeTrain app', () => {
     await user.click(searchButton)
 
     expect(await screen.findByRole('heading', { name: 'Codlea' })).toBeVisible()
+    expect(coverageAttempts).toBe(2)
     expect(fetchMock).toHaveBeenCalledTimes(4)
   })
 })

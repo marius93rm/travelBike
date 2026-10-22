@@ -45,7 +45,7 @@ export function TrainCard({ train }: TrainCardProps) {
         </div>
       </div>
 
-      <div className="bike-details">
+      <section className="bike-details" aria-label={ro.bikeDecisionSummary}>
         <div className="bike-badge"><Bike size={18} aria-hidden="true" /> {ro.bikeAccepted}</div>
         <div className="detail-row fee-detail">
           <Ticket size={18} aria-hidden="true" />
@@ -76,6 +76,14 @@ export function TrainCard({ train }: TrainCardProps) {
             ) : null}
           </div>
         </div>
+        <div className="bike-summary-action">
+          <a className="cfr-link" href={train.bookingUrl ?? train.sourceUrl} target="_blank" rel="noreferrer">
+            {train.operator === 'CFR Călători' ? ro.buyOnCfr : ro.verifyAtOperator(train.operator)}
+            <ExternalLink size={16} aria-hidden="true" />
+            <span className="sr-only">{ro.opensNewTab}</span>
+          </a>
+        </div>
+
         <div className="detail-row reservation-detail">
           <CircleHelp size={18} aria-hidden="true" />
           <div className="reservation-copy">
@@ -115,7 +123,7 @@ export function TrainCard({ train }: TrainCardProps) {
             ) : null}
           </div>
         </div>
-      </div>
+      </section>
 
       <div className="train-footer">
         <div className="source-details">
@@ -127,11 +135,6 @@ export function TrainCard({ train }: TrainCardProps) {
           </a>
           <small>{formatVerification(train.lastVerifiedAt)}</small>
         </div>
-        <a className="cfr-link" href={train.bookingUrl ?? train.sourceUrl} target="_blank" rel="noreferrer">
-          {train.operator === 'CFR Călători' ? ro.buyOnCfr : ro.verifyAtOperator(train.operator)}
-          <ExternalLink size={16} aria-hidden="true" />
-          <span className="sr-only">{ro.opensNewTab}</span>
-        </a>
       </div>
     </article>
   )

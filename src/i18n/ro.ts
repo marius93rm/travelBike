@@ -8,6 +8,11 @@ export const ro = {
   headline: 'Trenul potrivit pentru tine și bicicleta ta.',
   intro:
     'Căutăm curse directe cu transport confirmat pentru biciclete normale, în aria acoperită de pilot.',
+  pilotCoverageHint:
+    'Verificarea live acoperă stațiile pilot din județele Brașov, Sibiu, Covasna și Mureș.',
+  routeStartTitle: 'Alege o rută ca să începem.',
+  routeStartBody:
+    'Selectează stația de plecare, destinația și data. Afișăm doar trenuri directe cu transport de bicicletă confirmat.',
   from: 'De la',
   to: 'La',
   stationPlaceholder: 'Scrie orașul sau stația',
@@ -49,10 +54,12 @@ export const ro = {
   bikeNormal: 'Bicicletă normală',
   bikeRule: 'Sunt afișate doar trenurile cu serviciu oficial de transport biciclete.',
   resultsTitle: 'Trenuri în care poți lua bicicleta',
-  resultsHint: 'Afișăm numai curse directe cu serviciu pentru biciclete confirmat de operator. Rutele cu schimbări nu sunt incluse.',
+  resultsHint:
+    'Afișăm doar curse directe cu serviciu de bicicletă confirmat, nu și locurile rămase. Călătoriți în grup? Verificați la operator locurile pentru toți și câte un bilet pentru fiecare bicicletă.',
   resultsForRoute: 'Rezultate pentru',
   destinationsFrom: 'Destinații directe din',
   bikeAccepted: 'Bicicletă acceptată',
+  bikeDecisionSummary: 'Rezumat bicicletă și pasul următor',
   bikeReservationLabel: 'Rezervarea locului pentru călător',
   cfrBikeTicketNote: 'Biletul pentru bicicletă este separat. CFR permite cumpărarea online doar dacă numărul biletelor pentru bicicletă este egal cu numărul călătorilor pentru care se cere rezervare și trenul oferă serviciul. La trenurile cu loc rezervat, locurile sunt lângă spațiul bicicletei.',
   bikeReservation: {
@@ -63,7 +70,7 @@ export const ro = {
   capacityUnknown: 'Locuri biciclete: disponibilitate necunoscută',
   cfrBikeCapacityNote: 'CFR admite o singură bicicletă nepliabilă de persoană, în limita locurilor disponibile. Nu știm câte locuri mai sunt pentru această cursă; verifică disponibilitatea și biletul pentru bicicletă la CFR.',
   fallbackVerified: 'Date de rezervă verificate',
-  buyOnCfr: 'Verifică / cumpără pe CFR',
+  buyOnCfr: 'Verifică disponibilitatea și cumpără pe CFR',
   verifyAtOperator: (operator: string) => `Verifică la ${operator}`,
   sourceVerified: (source: string) => `Verificat din sursa ${source}`,
   fee: (value: string) => `Supliment bicicletă: ${value}`,
@@ -158,4 +165,12 @@ export const ro = {
   noReturnFound: 'Nicio întoarcere directă ulterioară găsită în datele verificate.',
   seeRoute: 'Vezi toate trenurile',
   openRoute: (from: string, to: string) => `Vezi ruta ${from} – ${to}`,
+  shareRoute: 'Distribuie căutarea',
+  shareTitle: 'Căutare BikeTrain',
+  shareDescription: (from: string, to: string, date: string) =>
+    `Verifică trenurile cu bicicletă de la ${from} la ${to}, în ${date}.`,
+  shareComplete: 'Căutarea a fost distribuită.',
+  shareCopied: 'Linkul căutării a fost copiat.',
+  shareFallback: 'Copiază acest link pentru a-l distribui.',
+  shareLinkLabel: 'Linkul căutării',
 } as const

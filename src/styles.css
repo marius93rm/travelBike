@@ -92,7 +92,8 @@ main { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
 .search-shell .eyebrow, .how-it-works .eyebrow { color: var(--orange-on-dark); }
 h1, h2, h3, p { margin-top: 0; }
 h1 { max-width: 690px; margin-bottom: 10px; font-size: clamp(31px, 5vw, 54px); line-height: 1.02; letter-spacing: -.047em; }
-.search-heading > div > p:last-child { max-width: 600px; margin-bottom: 0; color: #c5d3cd; font-size: 16px; line-height: 1.55; }
+.search-heading > div > p { max-width: 600px; margin-bottom: 10px; color: #c5d3cd; font-size: 16px; line-height: 1.55; }
+.search-heading > div > .pilot-coverage-hint { margin: 0; color: #d6ed9d; font-size: 13px; line-height: 1.45; }
 .bike-rule { display: flex; align-items: flex-start; gap: 12px; max-width: 300px; color: #dae5e0; font-size: 13px; line-height: 1.45; }
 .bike-rule strong { display: block; color: white; font-size: 14px; }
 .bike-rule-icon { flex: 0 0 auto; width: 38px; height: 38px; display: grid; place-items: center; color: var(--pine-950); background: #d6ed9d; border-radius: 50%; }
@@ -131,6 +132,11 @@ h1 { max-width: 690px; margin-bottom: 10px; font-size: clamp(31px, 5vw, 54px); l
 .bike-locked { margin-top: 14px; display: flex; align-items: center; gap: 9px; color: #dbe5e1; font-size: 13px; }
 .bike-locked-check { width: 28px; height: 28px; display: grid; place-items: center; color: var(--pine-950); background: #d6ed9d; border-radius: 8px; }
 
+.route-start-state { margin: 20px 0 56px; padding: 23px 25px; display: flex; align-items: flex-start; gap: 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; }
+.route-start-mark { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; color: var(--pine-950); background: var(--pine-100); border-radius: 12px; }
+.route-start-state h2 { margin-bottom: 6px; color: var(--pine-950); font-size: 21px; }
+.route-start-state p { margin: 0; color: var(--muted); line-height: 1.55; }
+
 .route-shell { padding: 32px clamp(18px, 5vw, 64px) 24px; }
 .route-line { display: flex; align-items: center; }
 .route-stop { flex: 1; display: flex; align-items: center; }
@@ -141,6 +147,11 @@ h1 { max-width: 690px; margin-bottom: 10px; font-size: clamp(31px, 5vw, 54px); l
 
 .results-section { padding: 25px 0 64px; }
 .results-heading { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 24px; }
+.results-heading-actions { display: grid; justify-items: end; gap: 12px; }
+.share-search { display: grid; justify-items: end; gap: 5px; }
+.share-search > p { min-height: 18px; margin: 0; color: var(--muted); font-size: 12px; text-align: right; }
+.share-fallback { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+.share-fallback input { width: min(420px, 100%); min-height: 40px; padding: 7px 10px; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 7px; font-size: 12px; }
 h2 { margin-bottom: 8px; font-size: clamp(27px, 4vw, 40px); line-height: 1.08; letter-spacing: -.035em; }
 .results-heading p:last-child { margin-bottom: 0; color: var(--muted); }
 .results-criteria { margin-top: 6px; font-size: 13px; line-height: 1.45; }
@@ -189,6 +200,9 @@ h2 { margin-bottom: 8px; font-size: clamp(27px, 4vw, 40px); line-height: 1.08; l
 .reservation-note { color: var(--muted); font-size: 12px; line-height: 1.45; }
 .reservation-evidence { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .reservation-evidence a { min-height: 24px; display: inline-flex; align-items: center; gap: 4px; color: var(--orange-dark); text-underline-offset: 3px; }
+.bike-summary-action { grid-column: 1 / -1; justify-self: end; }
+.bike-summary-action .cfr-link { min-height: 46px; padding: 0 15px; color: white; background: var(--orange); border-radius: 8px; text-decoration: none; }
+.bike-summary-action .cfr-link:hover { background: var(--orange-dark); text-decoration: underline; text-underline-offset: 3px; }
 .train-footer { padding: 17px 26px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .source-details { display: grid; gap: 4px; }
 .source-details .source-link { width: fit-content; min-height: 24px; display: inline-flex; align-items: center; gap: 6px; color: var(--pine-800); font-size: 13px; font-weight: 750; text-decoration: none; }
@@ -287,6 +301,10 @@ footer .catalog-attribution a:hover { color: var(--orange-dark); }
   .route-shell { padding: 27px 14px 18px; }
   .results-section { padding-top: 20px; padding-bottom: 50px; }
   .results-heading { align-items: start; flex-direction: column; gap: 13px; margin-bottom: 18px; }
+  .results-heading-actions { width: 100%; justify-items: start; }
+  .share-search { justify-items: start; }
+  .share-search > p { text-align: left; }
+  .share-fallback, .share-fallback input { width: 100%; }
   .results-data-meta { justify-items: start; }
   .result-source-attribution { justify-content: flex-start; }
   .result-freshness { justify-content: flex-start; text-align: left; }
@@ -298,6 +316,8 @@ footer .catalog-attribution a:hover { color: var(--orange-dark); }
   .train-identity > span { padding-left: 10px; }
   .bike-details { padding: 16px 17px; grid-template-columns: 1fr; gap: 13px; }
   .detail-row.muted { grid-column: 1; }
+  .bike-summary-action { justify-self: stretch; }
+  .bike-summary-action .cfr-link { width: 100%; justify-content: center; }
   .train-footer { padding: 16px 17px; align-items: flex-start; flex-direction: column; }
   .destination-card-heading { padding: 18px 17px 15px; align-items: flex-start; }
   .destination-card-heading h3 { font-size: 24px; }

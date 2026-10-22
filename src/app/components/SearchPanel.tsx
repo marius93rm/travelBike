@@ -1,5 +1,5 @@
 import { ArrowDownUp, Bike, CalendarDays, Search } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { StationId, TrainSearchCriteria } from '../../domain/train.js'
 import {
   formatJourneyDate,
@@ -7,16 +7,17 @@ import {
   journeyDateBounds,
 } from '../../domain/journey-date.js'
 import { ro } from '../../i18n/ro.js'
+import type { RouteDraftCriteria } from '../route-criteria.js'
 import { StationCombobox } from './StationCombobox.js'
 
 interface SearchPanelProps {
   hidden?: boolean
-  criteria: TrainSearchCriteria
+  criteria: RouteDraftCriteria
   loading: boolean
   disabled?: boolean
   disabledReason?: string
-  onChange: (next: TrainSearchCriteria) => void
-  onSearch: () => void
+  onChange: (next: RouteDraftCriteria) => void
+  onSearch: (criteria: TrainSearchCriteria) => void
   onSwap: () => void
 }
 
@@ -31,18 +32,27 @@ export function SearchPanel({
   onSwap,
 }: SearchPanelProps) {
   const dateBounds = journeyDateBounds()
-  const [stationValidity, setStationValidity] = useState({ from: true, to: true })
+  const criteriaKey = `${criteria.from}\u0000${criteria.to}`
+  const [validityState, setValidityState] = useState({
+    key: criteriaKey,
+    from: Boolean(criteria.from),
+    to: Boolean(criteria.to),
+  })
+  const stationValidity = useMemo(() => validityState.key === criteriaKey
+    ? validityState
+    : { key: criteriaKey, from: Boolean(criteria.from), to: Boolean(criteria.to) },
+  [validityState, criteriaKey, criteria.from, criteria.to])
   const [submitted, setSubmitted] = useState(false)
   const fromStationRef = useRef<HTMLInputElement>(null)
   const toStationRef = useRef<HTMLInputElement>(null)
 
   const setFromValidity = useCallback((valid: boolean) => {
-    setStationValidity((current) => ({ ...current, from: valid }))
-  }, [])
+    setValidityState((current) => ({ ...current, key: criteriaKey, from: valid }))
+  }, [criteriaKey])
 
   const setToValidity = useCallback((valid: boolean) => {
-    setStationValidity((current) => ({ ...current, to: valid }))
-  }, [])
+    setValidityState((current) => ({ ...current, key: criteriaKey, to: valid }))
+  }, [criteriaKey])
 
   useEffect(() => {
     if (!submitted) return
@@ -63,13 +73,23 @@ export function SearchPanel({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitted(true)
-    if (loading || dateBounds.catalogExpired || !stationValidity.from || !stationValidity.to) return
-    onSearch()
+    const validFrom = Boolean(criteria.from) && stationValidity.from
+    const validTo = Boolean(criteria.to) && stationValidity.to
+    if (!validFrom || !validTo) {
+      setValidityState({ key: criteriaKey, from: validFrom, to: validTo })
+      return
+    }
+    if (loading || dateBounds.catalogExpired) return
+    onSearch({ ...criteria, from: criteria.from, to: criteria.to })
   }
 
   function swapStations() {
     setSubmitted(false)
-    setStationValidity({ from: true, to: true })
+    setValidityState({
+      key: criteriaKey,
+      from: Boolean(criteria.to),
+      to: Boolean(criteria.from),
+    })
     onSwap()
   }
 
@@ -85,6 +105,7 @@ export function SearchPanel({
           <p className="eyebrow">{ro.routeEyebrow}</p>
           <h1 id="route-search-title">{ro.headline}</h1>
           <p>{ro.intro}</p>
+          <p className="pilot-coverage-hint">{ro.pilotCoverageHint}</p>
         </div>
         <div className="bike-rule bike-rule-desktop">
           <span className="bike-rule-icon"><Bike size={20} aria-hidden="true" /></span>
