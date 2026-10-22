@@ -190,6 +190,60 @@ describe('BikeTrain app', () => {
     expect(screen.getByLabelText('La')).toHaveValue('Codlea')
   })
 
+  it('lets the user repeat a recent route search during the current page session', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => response,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    renderAppWithRoute()
+
+    expect(await screen.findByText('IR 1622')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Inversează direcția' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+
+    const recentRoute = await screen.findByRole('button', { name: /Caută din nou Codlea către Brașov/ })
+    expect(screen.getByText('Căutări recente')).toBeVisible()
+    expect(screen.getByText(/dispar la reîncărcarea paginii/i)).toBeVisible()
+    await user.click(recentRoute)
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('/api/trains?from=codlea&to=brasov'),
+      expect.any(Object),
+    )
+  })
+
+  it('lets the user remove one recent route or clear the recent searches', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => response,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    renderAppWithRoute()
+
+    expect(await screen.findByText('IR 1622')).toBeVisible()
+    const searchButton = screen.getByRole('button', { name: 'Caută trenuri' })
+    await user.click(screen.getByRole('button', { name: 'Inversează direcția' }))
+    await waitFor(() => expect(searchButton).toBeEnabled())
+
+    const nextDateValue = new Date(`${journeyDateBounds().min}T12:00:00Z`)
+    nextDateValue.setUTCDate(nextDateValue.getUTCDate() + 1)
+    const nextDate = nextDateValue.toISOString().slice(0, 10)
+    fireEvent.change(screen.getByLabelText('Data'), { target: { value: nextDate } })
+    await user.click(searchButton)
+    await waitFor(() => expect(searchButton).toBeEnabled())
+
+    await user.click(screen.getByRole('button', { name: /Elimină ruta Codlea → Brașov/ }))
+    expect(screen.queryByRole('button', { name: /Caută din nou Codlea către Brașov/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Brașov → Codlea/ })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Șterge toate căutările recente' }))
+    expect(screen.queryByText('Căutări recente')).not.toBeInTheDocument()
+  })
+
   it('shows a network error and recovers when the user retries', async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))

@@ -1,4 +1,4 @@
-import { AlertTriangle, Bike, CalendarDays, CheckCircle2, Clock3, Compass, Info, RefreshCw, Search, Share2 } from 'lucide-react'
+import { AlertTriangle, Bike, CalendarDays, CheckCircle2, Clock3, Compass, History, Info, RefreshCw, Search, Share2, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchCoverage, fetchDestinations, fetchTrains } from '../data/train-api.js'
 import {
@@ -37,6 +37,10 @@ import {
 
 function createInitialDestinationCriteria(date: string): DestinationSearchCriteria {
   return { from: 'brasov', date, bike: true, direct: true }
+}
+
+function routeSearchKey(criteria: Pick<TrainSearchCriteria, 'from' | 'to' | 'date'>) {
+  return `${criteria.from}|${criteria.to}|${criteria.date}`
 }
 
 function sourceReliabilityLabel(meta: TrainSearchMeta) {
@@ -91,6 +95,15 @@ export function App() {
     () => initialQuery ?? createEmptyRouteDraft(dateBounds.min),
   )
   const [query, setQuery] = useState<TrainSearchCriteria | null>(initialQuery)
+  const [recentSearches, setRecentSearches] = useState<TrainSearchCriteria[]>(
+    () => initialQuery ? [initialQuery] : [],
+  )
+  const visibleRecentSearches = useMemo(
+    () => recentSearches
+      .filter((recent) => !query || routeSearchKey(recent) !== routeSearchKey(query))
+      .slice(0, query ? 3 : 4),
+    [query, recentSearches],
+  )
   const [data, setData] = useState<TrainSearchResponse | null>(null)
   const [departureTimeFilter, setDepartureTimeFilter] = useState<DepartureTimeFilter>('all')
   const visibleTrains = useMemo(
@@ -312,6 +325,10 @@ export function App() {
 
   function runSearch(next: TrainSearchCriteria) {
     if (catalogExpired) return
+    setRecentSearches((current) => [
+      next,
+      ...current.filter((recent) => routeSearchKey(recent) !== routeSearchKey(next)),
+    ].slice(0, 4))
     trainSearchSequence.current += 1
     focusResultsAfterSearch.current = true
     setLoading(true)
@@ -598,6 +615,75 @@ export function App() {
             onSearch={() => runDestinationSearch({ ...destinationDraft })}
           />
         </section>
+
+        {mode === 'route' && visibleRecentSearches.length > 0 ? (
+          <section className="recent-searches" aria-labelledby="recent-searches-title">
+            <div className="recent-searches-heading">
+              <div>
+                <p className="eyebrow">{ro.recentSearchesEyebrow}</p>
+                <h2 id="recent-searches-title">
+                  <History size={21} aria-hidden="true" />
+                  {ro.recentSearchesTitle}
+                </h2>
+                <p>{ro.recentSearchesNote}</p>
+              </div>
+              <button
+                type="button"
+                className="recent-clear-button"
+                onClick={() => {
+                  setRecentSearches([])
+                  document.getElementById('from-station')?.focus()
+                }}
+              >
+                <Trash2 size={16} aria-hidden="true" />
+                {ro.clearRecentSearches}
+              </button>
+            </div>
+            <ul className="recent-search-list">
+              {visibleRecentSearches.map((recent) => {
+                const from = stationsById.get(recent.from)?.name ?? recent.from
+                const to = stationsById.get(recent.to)?.name ?? recent.to
+                const date = formatJourneyDate(recent.date)
+                const key = routeSearchKey(recent)
+
+                return (
+                  <li className="recent-search-item" key={key}>
+                    <button
+                      type="button"
+                      className="recent-route-button"
+                      onClick={() => runSearch(recent)}
+                      aria-label={ro.repeatRecentSearch(from, to, date)}
+                    >
+                      <span className="recent-route-stations">
+                        {from} <span aria-hidden="true">→</span> {to}
+                      </span>
+                      <span className="recent-route-date">{date}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="recent-remove-button"
+                      aria-label={ro.removeRecentSearch(from, to, date)}
+                      onClick={(event) => {
+                        const item = event.currentTarget.closest('li')
+                        const focusTarget = item?.nextElementSibling?.querySelector('button')
+                          ?? item?.previousElementSibling?.querySelector('button')
+                        setRecentSearches((current) => current.filter((entry) => (
+                          routeSearchKey(entry) !== key
+                        )))
+                        window.requestAnimationFrame(() => {
+                          if (focusTarget instanceof HTMLButtonElement) focusTarget.focus()
+                          else document.getElementById('from-station')?.focus()
+                        })
+                      }}
+                    >
+                      <Trash2 size={17} aria-hidden="true" />
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        ) : null}
 
         {mode === 'route' ? query ? (
           <>

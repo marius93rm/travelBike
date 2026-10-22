@@ -39,6 +39,14 @@ export const ro = {
   date: 'Data',
   swap: 'Inversează direcția',
   search: 'Caută trenuri',
+  recentSearchesEyebrow: 'La îndemână',
+  recentSearchesTitle: 'Căutări recente',
+  recentSearchesNote: 'Disponibile doar pe durata acestei vizite. Dispar la reîncărcarea paginii.',
+  clearRecentSearches: 'Șterge toate căutările recente',
+  repeatRecentSearch: (from: string, to: string, date: string) =>
+    `Caută din nou ${from} către ${to}, ${date}`,
+  removeRecentSearch: (from: string, to: string, date: string) =>
+    `Elimină ruta ${from} → ${to}, ${date} din căutările recente`,
   prepareOperatorSearch: 'Pregătește linkul pentru verificare',
   operatorSearchLinkReady: (from: string, to: string, date: string) =>
     `Linkul de verificare la operator este pregătit pentru ${from} → ${to}, în data de ${date}.`,

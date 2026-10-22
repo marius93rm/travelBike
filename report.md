@@ -53,7 +53,7 @@ Per il pilot abbiamo scelto di non chiedere il numero di viaggiatori o biciclett
 
 ### Priorità 2 — ridurre attrito per chi torna
 
-- Ricerche recenti o tratte preferite, solo dopo aver deciso come salvarle, cancellarle e descriverle nell’informativa privacy.
+- **Completato — ricerche recenti:** massimo quattro tratte in memoria solo per la visita corrente; si possono ripetere, eliminare singolarmente o cancellare tutte. La cronologia scompare al ricaricamento della pagina, non viene salvata sul dispositivo né inviata come elenco. Una ricerca ripetuta usa la normale richiesta di ricerca.
 - **Completato — orario di partenza:** ordinamento cronologico e soglie dalle 10:00, 14:00 e 18:00, interpretate nel fuso rumeno. Il filtro mostra quante corse restano e offre il ripristino dell’elenco se non ci sono corrispondenze.
 - **Completato — guida acquisto:** la scheda CFR collega alla guida ufficiale per comprare online, accanto alla regola sul biglietto bici. La verifica dei posti resta sul sito dell’operatore.
 
@@ -81,11 +81,12 @@ Fonti di riferimento già raccolte nella verifica: [GDPR, art. 13](https://eur-l
 - Riaperta la UI locale a 390 × 844 px: campi vuoti, copertura visibile e scheda destinazioni non mostrata prima della verifica.
 - Scheda treno controllata a 390 × 844 px con una risposta locale di prova: bici, capacità sconosciuta, supplemento da verificare e azione CFR si leggono in sequenza; il pulsante è a larghezza piena e precede le note estese.
 - Filtro orario controllato nel browser Paseo a 390 × 844 px con tre partenze di prova in ordine casuale: i risultati sono mostrati cronologicamente; “De la 10:00” lascia le partenze delle 10:00 e delle 18:00 e annuncia “2 din 3 trenuri afișate”. La risposta era simulata nel browser; nessuna richiesta live CFR.
+- Ricerche recenti viste nel browser Paseo a 390 × 844 px dopo il cambio di tratta: percorso, data, ripetizione, rimozione e cancellazione totale hanno controlli chiari; la nota dichiara che i dati spariscono al ricaricamento. L’adapter live CFR era disattivato.
 - Il testo per i gruppi è presente nei risultati; non viene mostrata una disponibilità quantitativa che il backend non fornisce.
 - I test confermano che la pagina iniziale non invia richieste; una ricerca valida aggiorna l’URL e un link diretto ripristina i criteri.
 - In locale l’adapter live è disattivato: compare il messaggio corretto e il link a CFR. **Questo controllo non dimostra che la ricerca pubblica live funzioni**, perché non esiste ancora un deployment pubblico da verificare.
-- npm run validate completato dopo il filtro orario: lint superato, 210 test superati, build di produzione riuscita e smoke del server compilato superato (SPA, health, readiness, coverage e ricerca fail-closed).
+- `npm run validate` completato dopo le ricerche recenti: lint superato, 212 test superati, build di produzione riuscita e smoke del server compilato superato (SPA, health, readiness, coverage e ricerca fail-closed).
 
 ## Prossimo passo consigliato
 
-La prova con utenti è stata completata, come confermato dall’utente. Il prossimo elemento UX da valutare sono ricerche recenti o preferiti, ma solo dopo aver deciso salvataggio, cancellazione e informativa privacy. Un eventuale selettore quantità richiederà dati di capacità specifici per tratta e regole provider; prima della pubblicazione restano inoltre i blocchi tecnici e operativi sopra elencati.
+La prova con utenti è stata completata, come confermato dall’utente. Con ricerche recenti e filtro orario, il passo UX successivo è osservare come le persone scelgono le corse e verificare dove il flusso resta poco chiaro. Un eventuale selettore quantità richiederà dati di capacità specifici per tratta e regole provider; prima della pubblicazione restano inoltre i blocchi tecnici e operativi sopra elencati.
