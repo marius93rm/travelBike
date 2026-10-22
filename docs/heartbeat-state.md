@@ -17,3 +17,7 @@ Aggiornato il 17 ottobre 2026, run Paseo `0feeeef7-ec94-4373-9639-d176ea655a58`.
 ## Aggiornamento operativo successivo — 21 ottobre 2026
 
 Modifica e verifica manuali, fuori da un run heartbeat: l’utente si è identificato come CFR Călători e ha autorizzato in questa conversazione l’attivazione del perimetro adapter esistente. Il riferimento è registrato in `docs/cfr-authorization-record.md`; `render.yaml` abilita ora il provider. `npm run validate` è passato (lint, 23 file/202 test, build, smoke built-server); YAML e `git diff --check` sono validi. Lo smoke CFR live eseguito su server locale con adapter attivo ha superato readiness e tutte e quattro le tratte: tre hanno restituito una corsa bici e una ha dato zero corse con copertura valida. Il test ha interrogato il planner e non ha eseguito un deploy Render; nessuna email o modulo è stato inviato.
+
+## Sviluppo UX locale — 22 ottobre 2026
+
+Nello stato in cui l’esplorazione destinazioni è `unsupported`, aggiunto il pulsante “Caută o rută anume” che porta alla ricerca tratta esistente e focalizza il campo destinazione. Verifica manuale Paseo a 1280×800 e 390×844: il controllo è visibile, la navigazione funziona e la pagina non supera i 390 px (`scrollWidth` rilevato: 375 px). Provider CFR disattivato durante la prova; le richieste sono rimaste su loopback. `npm run build`, `npm run lint` e `git diff --check` passati; suite test non eseguita. Restano da verificare gli stati destinazione con risultati e ritorni, che richiedono dati realistici non disponibili nel provider corrente.

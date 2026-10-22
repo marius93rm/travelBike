@@ -663,6 +663,9 @@ export function App() {
                 <Compass size={30} aria-hidden="true" />
                 <h3>{ro.discoveryUnavailableTitle}</h3>
                 <p>{ro.discoveryUnavailableBody}</p>
+                <button type="button" className="secondary-button" onClick={openSpecificRouteSearch}>
+                  <Search size={17} aria-hidden="true" />{ro.searchSpecificRoute}
+                </button>
               </div>
             ) : null}
 
@@ -708,6 +711,9 @@ export function App() {
                 <Compass size={30} aria-hidden="true" />
                 <h3>{ro.discoveryUnavailableTitle}</h3>
                 <p>{ro.discoveryUnavailableBody}</p>
+                <button type="button" className="secondary-button" onClick={openSpecificRouteSearch}>
+                  <Search size={17} aria-hidden="true" />{ro.searchSpecificRoute}
+                </button>
               </div>
             ) : null}
 
