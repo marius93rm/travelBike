@@ -198,6 +198,7 @@ h2 { margin-bottom: 8px; font-size: clamp(27px, 4vw, 40px); line-height: 1.08; l
 .reservation-detail { grid-column: 1 / -1; align-items: flex-start; padding-top: 13px; border-top: 1px solid #dbe6dc; }
 .reservation-copy { min-width: 0; display: grid; gap: 5px; }
 .reservation-note { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.reservation-guide { width: fit-content; min-height: 44px; display: inline-flex; align-items: center; gap: 5px; color: var(--pine-800); font-size: 13px; font-weight: 750; text-underline-offset: 3px; }
 .reservation-evidence { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .reservation-evidence a { min-height: 24px; display: inline-flex; align-items: center; gap: 4px; color: var(--orange-dark); text-underline-offset: 3px; }
 .bike-summary-action { grid-column: 1 / -1; justify-self: end; }

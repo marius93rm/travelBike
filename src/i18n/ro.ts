@@ -62,6 +62,7 @@ export const ro = {
   bikeDecisionSummary: 'Rezumat bicicletă și pasul următor',
   bikeReservationLabel: 'Rezervarea locului pentru călător',
   cfrBikeTicketNote: 'Biletul pentru bicicletă este separat. CFR permite cumpărarea online doar dacă numărul biletelor pentru bicicletă este egal cu numărul călătorilor pentru care se cere rezervare și trenul oferă serviciul. La trenurile cu loc rezervat, locurile sunt lângă spațiul bicicletei.',
+  cfrOnlinePurchaseGuide: 'Vezi pașii pentru cumpărarea online la CFR',
   bikeReservation: {
     required: 'obligatorie',
     not_required: 'nu este necesară',

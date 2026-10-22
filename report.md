@@ -54,7 +54,7 @@ Per il pilot abbiamo scelto di non chiedere il numero di viaggiatori o biciclett
 
 - Ricerche recenti o tratte preferite, solo dopo aver deciso come salvarle, cancellarle e descriverle nell’informativa privacy.
 - Filtri semplici come “partenze dopo le 10” quando l’ordinamento e i dati coprono bene il caso.
-- Una guida breve e specifica su come completare l’acquisto bici sul sito dell’operatore; evitare di promettere disponibilità se CFR non la espone.
+- **Completato — guida acquisto:** la scheda CFR collega alla guida ufficiale per comprare online, accanto alla regola sul biglietto bici. La verifica dei posti resta sul sito dell’operatore.
 
 ### Animazioni e widget
 

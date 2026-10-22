@@ -840,6 +840,10 @@ describe('BikeTrain app', () => {
     expect(screen.getByText(
       'Biletul pentru bicicletă este separat. CFR permite cumpărarea online doar dacă numărul biletelor pentru bicicletă este egal cu numărul călătorilor pentru care se cere rezervare și trenul oferă serviciul. La trenurile cu loc rezervat, locurile sunt lângă spațiul bicicletei.',
     )).toBeVisible()
+    expect(screen.getByRole('link', { name: /Vezi pașii pentru cumpărarea online la CFR/ })).toHaveAttribute(
+      'href',
+      'https://www.cfrcalatori.ro/cum-cumpar-online/',
+    )
     expect(screen.getByText('de verificat la operator')).toBeVisible()
     expect(screen.queryByText('Catalog național')).not.toBeInTheDocument()
   })

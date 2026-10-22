@@ -91,7 +91,19 @@ export function TrainCard({ train }: TrainCardProps) {
               <strong>{ro.bikeReservationLabel}:</strong> {ro.bikeReservation[train.bikeReservation]}
             </span>
             {train.operator === 'CFR Călători' ? (
-              <small className="reservation-note">{ro.cfrBikeTicketNote}</small>
+              <>
+                <small className="reservation-note">{ro.cfrBikeTicketNote}</small>
+                <a
+                  className="reservation-guide"
+                  href="https://www.cfrcalatori.ro/cum-cumpar-online/"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {ro.cfrOnlinePurchaseGuide}
+                  <ExternalLink size={13} aria-hidden="true" />
+                  <span className="sr-only">{ro.opensNewTab}</span>
+                </a>
+              </>
             ) : null}
             {train.bikeTicketPurchaseEvidence ? (
               <small className="reservation-evidence">
